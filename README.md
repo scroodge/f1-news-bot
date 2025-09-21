@@ -58,16 +58,21 @@ pip install -r requirements.txt
 
 # Проверка локальных сервисов (если уже установлены)
 curl http://localhost:11434/api/tags  # Проверка Ollama
-curl http://localhost:5678  # Проверка n8n
+curl http://localhost:5678            # Проверка n8n
+pg_isready -h localhost -p 5432       # Проверка PostgreSQL
+redis-cli ping                        # Проверка Redis
 
-# Если Ollama не установлен:
+# Если сервисы не установлены, установите их:
+# sudo apt install postgresql postgresql-contrib redis-server
 # curl -fsSL https://ollama.ai/install.sh | sh
-# ollama serve &
-# ollama pull llama2
+# npm install -g n8n
 
-# Запуск приложения
-screen -S f1-news-bot
-python run.py
+# Автоматический запуск с проверкой
+./run-local.sh
+
+# Или ручной запуск в screen:
+# screen -S f1-news-bot
+# python run.py
 # Ctrl+A, D для выхода из screen
 ```
 
