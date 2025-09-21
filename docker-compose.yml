@@ -18,7 +18,7 @@ services:
 
   # Redis Cache
   redis:
-    image: redis:7-alpine
+    image: redis:6-alpine
     ports:
       - "6379:6379"
     volumes:
@@ -29,22 +29,7 @@ services:
       timeout: 10s
       retries: 3
 
-  # Ollama AI Service
-  ollama:
-    image: ollama/ollama:latest
-    ports:
-      - "11434:11434"
-    volumes:
-      - ollama_data:/root/.ollama
-    environment:
-      - OLLAMA_HOST=0.0.0.0
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-
-  # F1 News Bot API
+  # F1 News Bot API (подключается к локальным Ollama и n8n)
   f1-news-bot:
     build: .
     ports:
@@ -52,37 +37,19 @@ services:
     environment:
       - DATABASE_URL=postgresql://f1_user:f1_password@postgres:5432/f1_news
       - REDIS_URL=redis://redis:6379/0
-      - OLLAMA_BASE_URL=http://ollama:11434
+      - OLLAMA_BASE_URL=http://host.docker.internal:11434
+      - OLLAMA_MODEL=llama2
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
-      ollama:
-        condition: service_healthy
     volumes:
       - ./logs:/app/logs
     restart: unless-stopped
-
-  # n8n Workflow Automation
-  n8n:
-    image: n8nio/n8n:latest
-    ports:
-      - "5678:5678"
-    environment:
-      - N8N_BASIC_AUTH_ACTIVE=true
-      - N8N_BASIC_AUTH_USER=admin
-      - N8N_BASIC_AUTH_PASSWORD=admin123
-      - N8N_HOST=0.0.0.0
-      - N8N_PORT=5678
-      - N8N_PROTOCOL=http
-    volumes:
-      - n8n_data:/home/node/.n8n
-      - ./n8n_workflows:/home/node/.n8n/workflows
-    restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
 
 volumes:
   postgres_data:
   redis_data:
-  ollama_data:
-  n8n_data:
