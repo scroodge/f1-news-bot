@@ -1,0 +1,55 @@
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15
+    environment:
+      POSTGRES_DB: f1_news
+      POSTGRES_USER: f1_user
+      POSTGRES_PASSWORD: f1_password
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U f1_user -d f1_news"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Redis Cache
+  redis:
+    image: redis:6-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # F1 News Bot API (подключается к локальным Ollama и n8n)
+  f1-news-bot:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql://f1_user:f1_password@postgres:5432/f1_news
+      - REDIS_URL=redis://redis:6379/0
+      - OLLAMA_BASE_URL=http://host.docker.internal:11434
+      - OLLAMA_MODEL=llama2
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./logs:/app/logs
+    restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+volumes:
+  postgres_data:
+  redis_data:

@@ -47,15 +47,23 @@ sudo systemctl start postgresql redis-server
 cp config.env.example .env
 nano .env  # Отредактируйте с вашими данными
 
+# Для случая с локальными Ollama и n8n используйте:
+# OLLAMA_BASE_URL=http://localhost:11434
+# (n8n уже запущен локально)
+
 # Установка Python зависимостей
 python3 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
 
-# Установка и запуск Ollama
-curl -fsSL https://ollama.ai/install.sh | sh
-ollama serve &
-ollama pull llama2
+# Проверка локальных сервисов (если уже установлены)
+curl http://localhost:11434/api/tags  # Проверка Ollama
+curl http://localhost:5678  # Проверка n8n
+
+# Если Ollama не установлен:
+# curl -fsSL https://ollama.ai/install.sh | sh
+# ollama serve &
+# ollama pull llama2
 
 # Запуск приложения
 screen -S f1-news-bot
@@ -83,6 +91,37 @@ docker compose ps
 # Просмотр логов
 docker compose logs -f f1-news-bot
 ```
+
+### Способ 2.1: Docker + локальные Ollama и n8n
+
+Если у вас уже запущены Ollama и n8n локально на сервере:
+
+```bash
+# Клонирование репозитория
+git clone https://github.com/YOUR_USERNAME/f1-news-bot.git
+cd f1-news-bot
+
+# Настройка окружения
+cp config.env.example .env
+# Отредактируйте .env файл:
+# OLLAMA_BASE_URL=http://localhost:11434
+# (остальные настройки как обычно)
+
+# Запуск только PostgreSQL, Redis и F1 News Bot
+docker compose -f docker-compose-local.yml up -d
+
+# Проверка статуса
+docker compose -f docker-compose-local.yml ps
+
+# Просмотр логов
+docker compose -f docker-compose-local.yml logs -f f1-news-bot
+```
+
+**Преимущества этого подхода:**
+- Использует локальные Ollama и n8n (не дублирует сервисы)
+- Меньше потребление ресурсов
+- Избегает конфликтов портов
+- Быстрее запуск
 
 **Сервисы будут доступны:**
 - API: http://localhost:8000
