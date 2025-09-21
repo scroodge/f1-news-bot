@@ -64,14 +64,21 @@ class RSSCollector(BaseCollector):
                             continue
                         
                         # Create news item
+                        title = entry.get('title', '')
+                        content = entry.get('summary', entry.get('description', ''))
+                        
                         news_item = NewsItem(
-                            title=entry.get('title', ''),
-                            content=entry.get('summary', entry.get('description', '')),
+                            title=title,
+                            content=content,
                             url=entry.get('link', ''),
                             source=feed.feed.get('title', feed_url),
                             source_type=SourceType.RSS,
                             published_at=self._parse_date(entry.get('published', ''))
                         )
+                        
+                        # Calculate relevance score and extract keywords
+                        news_item.relevance_score = self.calculate_relevance_score(title, content)
+                        news_item.keywords = self.extract_keywords(title, content)
                         
                         news_items.append(news_item)
                         
@@ -86,16 +93,15 @@ class RSSCollector(BaseCollector):
             return []
     
     def _is_f1_related(self, entry) -> bool:
-        """Check if RSS entry is F1 related"""
-        text = f"{entry.get('title', '')} {entry.get('summary', '')} {entry.get('description', '')}"
-        text_lower = text.lower()
+        """Check if RSS entry is F1 related using professional scoring"""
+        title = entry.get('title', '')
+        content = entry.get('summary', entry.get('description', ''))
         
-        # Check for F1 keywords
-        for keyword in F1_KEYWORDS:
-            if keyword.lower() in text_lower:
-                return True
+        # Use the professional relevance scoring algorithm
+        score = self.calculate_relevance_score(title, content)
         
-        return False
+        # Return True if score is above minimum threshold
+        return score >= 0.1  # Very low threshold to catch all potential F1 content
     
     def _parse_date(self, date_str: str) -> datetime:
         """Parse date string to datetime"""

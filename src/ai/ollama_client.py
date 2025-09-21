@@ -19,14 +19,16 @@ class OllamaClient:
     def __init__(self):
         self.base_url = settings.ollama_base_url
         self.model = settings.ollama_model
+        self.session = None
     
     async def initialize(self):
         """Initialize HTTP session"""
+        self.session = True  # We use requests, not aiohttp
         logger.info(f"Ollama client initialized with model: {self.model}")
     
     async def close(self):
         """Close HTTP session"""
-        pass
+        self.session = None
     
     async def process_news_item(self, news_item: NewsItem) -> ProcessingResult:
         """Process news item with AI"""

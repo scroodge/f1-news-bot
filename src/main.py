@@ -135,46 +135,63 @@ class F1NewsBotApp:
             """Get collected news items"""
             try:
                 from .database import db_manager
+                from .database import NewsItemDB
                 from .models import NewsItem, SourceType
-                
+
                 with db_manager.get_session() as session:
-                    query = session.query(db_manager.NewsItemDB)
-                    
+                    query = session.query(NewsItemDB)
+
                     if processed is not None:
-                        query = query.filter(db_manager.NewsItemDB.processed == processed)
-                    
+                        query = query.filter(NewsItemDB.processed == processed)
+
                     # Order by creation time (newest first)
-                    query = query.order_by(db_manager.NewsItemDB.created_at.desc())
-                    
+                    query = query.order_by(NewsItemDB.created_at.desc())
+
                     # Apply pagination
                     query = query.offset(offset).limit(limit)
-                    
+
                     db_items = query.all()
+                
+                news_items = []
+                for item in db_items:
+                    # Create base news item
+                    news_item = NewsItem(
+                        id=str(item.id),
+                        title=item.title,
+                        content=item.content,
+                        url=item.url,
+                        source=item.source,
+                        source_type=SourceType(item.source_type),
+                        published_at=item.published_at,
+                        relevance_score=item.relevance_score,
+                        keywords=item.keywords or [],
+                        processed=item.processed,
+                        published=item.published,
+                        created_at=item.created_at
+                    )
                     
-                    news_items = []
-                    for item in db_items:
-                        news_item = NewsItem(
-                            id=str(item.id),
-                            title=item.title,
-                            content=item.content,
-                            url=item.url,
-                            source=item.source,
-                            source_type=SourceType(item.source_type),
-                            published_at=item.published_at,
-                            relevance_score=item.relevance_score,
-                            keywords=item.keywords or [],
-                            processed=item.processed,
-                            published=item.published,
-                            created_at=item.created_at
+                    # If processed, add AI-generated fields
+                    if item.processed:
+                        from .models import ProcessedNewsItem
+                        processed_item = ProcessedNewsItem(
+                            **news_item.dict(),
+                            summary=item.summary or "",
+                            key_points=item.key_points or [],
+                            sentiment=item.sentiment or "neutral",
+                            importance_level=item.importance_level or 1,
+                            formatted_content=item.formatted_content or "",
+                            tags=item.tags or []
                         )
+                        news_items.append(processed_item)
+                    else:
                         news_items.append(news_item)
-                    
-                    return {
-                        "news_items": [item.dict() for item in news_items],
-                        "total_count": len(news_items),
-                        "limit": limit,
-                        "offset": offset
-                    }
+                
+                return {
+                    "news_items": [item.dict() for item in news_items],
+                    "total_count": len(news_items),
+                    "limit": limit,
+                    "offset": offset
+                }
             except Exception as e:
                 logger.error(f"Error getting news: {e}")
                 raise HTTPException(status_code=500, detail=str(e))

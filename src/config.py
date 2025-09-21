@@ -94,8 +94,9 @@ class Settings(BaseSettings):
         case_sensitive = False
         extra = "ignore"  # Ignore extra fields from .env
 
-# F1 Keywords for content filtering
+# F1 Keywords for content filtering (English and Russian)
 F1_KEYWORDS = [
+    # English keywords
     "Formula 1", "F1", "Formula One", "Grand Prix", "GP", "racing", "race",
     "Hamilton", "Verstappen", "Leclerc", "Russell", "Sainz", "Perez", "Norris",
     "Mercedes", "Red Bull", "Ferrari", "McLaren", "Alpine", "Aston Martin",
@@ -103,7 +104,42 @@ F1_KEYWORDS = [
     "qualifying", "pole position", "podium", "victory", "win", "driver",
     "constructor", "team", "car", "engine", "tire", "strategy", "pit stop",
     "safety car", "red flag", "yellow flag", "overtake", "crash", "accident",
-    "penalty", "points", "leader", "standings", "circuit", "track", "lap"
+    "penalty", "points", "leader", "standings", "circuit", "track", "lap",
+    
+    # Russian keywords
+    "формула 1", "ф1", "формула один", "гран при", "гонка", "автогонки",
+    "хамилтон", "верстаппен", "леклер", "расселл", "сайнс", "перес", "норрис",
+    "мерседес", "ред булл", "феррари", "макларен", "альпин", "астон мартин",
+    "альфатаури", "альфа ромео", "уильямс", "хаас", "чемпионат", "сезон",
+    "квалификация", "поул позиция", "подиум", "победа", "победить", "пилот",
+    "конструктор", "команда", "машина", "двигатель", "шина", "стратегия",
+    "пит-стоп", "болид безопасности", "красный флаг", "желтый флаг",
+    "обгон", "авария", "штраф", "очки", "лидер", "турнирная таблица",
+    "трасса", "круг", "гонщик", "автогонщик"
+]
+
+# High-priority keywords that strongly indicate F1 content
+HIGH_PRIORITY_KEYWORDS = [
+    "formula 1", "f1", "формула 1", "ф1", "grand prix", "гран при",
+    "racing", "гонка", "championship", "чемпионат", "verstappen", "верстаппен",
+    "hamilton", "хамилтон", "ferrari", "феррари", "mercedes", "мерседес",
+    "red bull", "ред булл"
+]
+
+# Team and driver names for better detection
+TEAM_NAMES = [
+    "mercedes", "мерседес", "red bull", "ред булл", "ferrari", "феррари",
+    "mclaren", "макларен", "alpine", "альпин", "aston martin", "астон мартин",
+    "alphatauri", "альфатаури", "alfa romeo", "альфа ромео", "williams", "уильямс",
+    "haas", "хаас"
+]
+
+DRIVER_NAMES = [
+    "hamilton", "хамилтон", "verstappen", "верстаппен", "leclerc", "леклер",
+    "russell", "расселл", "sainz", "сайнс", "perez", "перес", "norris", "норрис",
+    "alonso", "алонсо", "ocon", "окон", "gasly", "гасли", "tsunoda", "цунода",
+    "bottas", "боттас", "zhou", "чжоу", "albon", "альбон", "latifi", "латифи",
+    "schumacher", "шумахер", "magnussen", "магнуссен"
 ]
 
 # Create settings instance
