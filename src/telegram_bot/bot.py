@@ -19,7 +19,7 @@ class F1NewsBot:
     """Telegram Bot for F1 news publication"""
     
     def __init__(self):
-        self.bot = Bot(token=settings.telegram_bot_token)
+        self.bot = None  # Will be set from application
         self.application = None
         self.channel_id = settings.telegram_channel_id
         self.pending_publications = []
@@ -28,6 +28,9 @@ class F1NewsBot:
         """Initialize the bot"""
         try:
             self.application = Application.builder().token(settings.telegram_bot_token).build()
+            
+            # Set bot instance from application (single instance)
+            self.bot = self.application.bot
             
             # Add handlers
             self.application.add_handler(CommandHandler("start", self.start_command))
