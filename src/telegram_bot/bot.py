@@ -37,7 +37,12 @@ class F1NewsBot:
             self.application.add_handler(CommandHandler("publish", self.publish_command))
             self.application.add_handler(CallbackQueryHandler(self.button_callback))
             
-            logger.info("Telegram bot initialized successfully")
+            # Start the bot in polling mode
+            await self.application.initialize()
+            await self.application.start()
+            await self.application.updater.start_polling()
+            
+            logger.info("Telegram bot initialized and started successfully")
             return True
             
         except Exception as e:
@@ -297,5 +302,10 @@ class F1NewsBot:
     async def stop(self):
         """Stop the bot"""
         if self.application:
-            await self.application.stop()
+            try:
+                await self.application.updater.stop()
+                await self.application.stop()
+                await self.application.shutdown()
+            except Exception as e:
+                logger.error(f"Error stopping bot: {e}")
         logger.info("Telegram bot stopped")

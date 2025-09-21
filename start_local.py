@@ -6,21 +6,77 @@ import os
 import sys
 import asyncio
 from pathlib import Path
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 # Add src to Python path
 sys.path.insert(0, str(Path(__file__).parent / "src"))
 
+def check_required_env_vars():
+    """Check that all required environment variables are set"""
+    required_vars = [
+        'TELEGRAM_BOT_TOKEN',
+        'TELEGRAM_CHANNEL_ID', 
+        'TELEGRAM_ADMIN_ID',
+        'DATABASE_URL',
+        'REDIS_URL',
+        'OLLAMA_BASE_URL',
+        'OLLAMA_MODEL'
+    ]
+    
+    missing_vars = []
+    for var in required_vars:
+        value = os.environ.get(var)
+        if not value or value.strip() == '':
+            missing_vars.append(var)
+    
+    if missing_vars:
+        print("❌ ОШИБКА: Отсутствуют обязательные переменные окружения:")
+        for var in missing_vars:
+            print(f"   - {var}")
+        print("\n📝 Создайте файл .env на основе .env.example и заполните все обязательные переменные.")
+        print("   Пример: cp .env.example .env")
+        print("   Затем отредактируйте .env файл с вашими настройками.")
+        sys.exit(1)
+    
+    # Check Telegram bot token format
+    bot_token = os.environ.get('TELEGRAM_BOT_TOKEN', '')
+    if not bot_token or bot_token == 'your_bot_token_here' or ':' not in bot_token:
+        print("❌ ОШИБКА: Неверный формат TELEGRAM_BOT_TOKEN")
+        print("   Токен должен быть в формате: 123456789:ABCdefGHIjklMNOpqrsTUVwxyz")
+        print("   Получите токен у @BotFather в Telegram")
+        sys.exit(1)
+    
+    # Check channel ID format
+    channel_id = os.environ.get('TELEGRAM_CHANNEL_ID', '')
+    if not channel_id or channel_id == 'your_channel_id_here' or not channel_id.lstrip('-').isdigit():
+        print("❌ ОШИБКА: Неверный формат TELEGRAM_CHANNEL_ID")
+        print("   ID канала должен быть числом (например: -1001234567890)")
+        print("   Получите ID канала, переслав сообщение боту @userinfobot")
+        sys.exit(1)
+    
+    # Check admin ID format
+    admin_id = os.environ.get('TELEGRAM_ADMIN_ID', '')
+    if not admin_id or admin_id == 'your_admin_id_here' or not admin_id.isdigit():
+        print("❌ ОШИБКА: Неверный формат TELEGRAM_ADMIN_ID")
+        print("   ID администратора должен быть числом (например: 123456789)")
+        print("   Получите свой ID, написав боту @userinfobot")
+        sys.exit(1)
+    
+    print("✅ Все обязательные переменные окружения настроены и валидны")
+
 def setup_environment():
     """Setup environment variables for local development"""
-    # Set default values for required environment variables
-    os.environ.setdefault('TELEGRAM_BOT_TOKEN', 'your_bot_token_here')
-    os.environ.setdefault('TELEGRAM_CHANNEL_ID', 'your_channel_id_here')
-    os.environ.setdefault('DATABASE_URL', 'postgresql://f1_user:f1_password@localhost:5432/f1_news')
-    os.environ.setdefault('REDIS_URL', 'redis://localhost:6379/0')
-    os.environ.setdefault('OLLAMA_BASE_URL', 'http://localhost:11434')
-    os.environ.setdefault('OLLAMA_MODEL', 'llama2')
-    os.environ.setdefault('LOG_LEVEL', 'INFO')
-    os.environ.setdefault('DEBUG', 'true')
+    # Check required variables first
+    check_required_env_vars()
+    
+    # Set default values for optional variables only if not set
+    if not os.environ.get('LOG_LEVEL'):
+        os.environ['LOG_LEVEL'] = 'INFO'
+    if not os.environ.get('DEBUG'):
+        os.environ['DEBUG'] = 'true'
 
 def main():
     """Main function"""
