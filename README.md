@@ -24,7 +24,46 @@
 
 ## 🚀 Быстрый запуск
 
-### Способ 1: Docker (рекомендуется)
+### Способ 1: Ubuntu (рекомендуется для серверов)
+
+```bash
+# Клонирование репозитория
+git clone https://github.com/YOUR_USERNAME/f1-news-bot.git
+cd f1-news-bot
+
+# Быстрая установка всех зависимостей
+sudo apt update && sudo apt install -y python3 python3-pip python3-venv python3-dev postgresql postgresql-contrib redis-server build-essential libpq-dev curl screen
+
+# Настройка базы данных
+sudo -u postgres createdb f1_news
+sudo -u postgres createuser f1_user
+sudo -u postgres psql -c "ALTER USER f1_user PASSWORD 'f1_password';"
+sudo -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE f1_news TO f1_user;"
+
+# Запуск сервисов
+sudo systemctl start postgresql redis-server
+
+# Настройка окружения
+cp config.env.example .env
+nano .env  # Отредактируйте с вашими данными
+
+# Установка Python зависимостей
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+
+# Установка и запуск Ollama
+curl -fsSL https://ollama.ai/install.sh | sh
+ollama serve &
+ollama pull llama2
+
+# Запуск приложения
+screen -S f1-news-bot
+python run.py
+# Ctrl+A, D для выхода из screen
+```
+
+### Способ 2: Docker (рекомендуется для разработки)
 
 ```bash
 # Клонирование репозитория
@@ -36,13 +75,13 @@ cp config.env.example .env
 # Отредактируйте .env файл с вашими данными
 
 # Запуск всех сервисов
-docker-compose up -d
+docker compose up -d
 
 # Проверка статуса
-docker-compose ps
+docker compose ps
 
 # Просмотр логов
-docker-compose logs -f f1-news-bot
+docker compose logs -f f1-news-bot
 ```
 
 **Сервисы будут доступны:**
@@ -50,7 +89,7 @@ docker-compose logs -f f1-news-bot
 - n8n: http://localhost:5678 (admin/admin123)
 - Ollama: http://localhost:11434
 
-### Способ 2: Локальная установка
+### Способ 3: Локальная установка (подробная)
 
 #### 1. Клонирование и настройка
 
@@ -99,22 +138,77 @@ TWITTER_BEARER_TOKEN=your_twitter_bearer_token
 
 #### 3. Установка зависимых сервисов
 
-**PostgreSQL и Redis:**
+**Ubuntu/Debian:**
 ```bash
-# macOS
+# Обновление системы
+sudo apt update && sudo apt upgrade -y
+
+# Установка Python и pip
+sudo apt install python3 python3-pip python3-venv python3-dev -y
+
+# Установка PostgreSQL
+sudo apt install postgresql postgresql-contrib -y
+
+# Установка Redis
+sudo apt install redis-server -y
+
+# Установка системных зависимостей
+sudo apt install build-essential libpq-dev curl -y
+
+# Запуск сервисов
+sudo systemctl start postgresql
+sudo systemctl enable postgresql
+sudo systemctl start redis-server
+sudo systemctl enable redis-server
+
+# Создание базы данных
+sudo -u postgres createdb f1_news
+sudo -u postgres createuser f1_user
+sudo -u postgres psql -c "ALTER USER f1_user PASSWORD 'f1_password';"
+sudo -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE f1_news TO f1_user;"
+```
+
+**macOS:**
+```bash
+# Установка через Homebrew
 brew install postgresql redis
 
-# Ubuntu/Debian
-sudo apt-get install postgresql redis-server
+# Запуск сервисов
+brew services start postgresql
+brew services start redis
 
 # Создание базы данных
 createdb f1_news
 ```
 
-**Ollama:**
+**Ollama для Ubuntu:**
 ```bash
-# Установка
+# Установка Ollama
 curl -fsSL https://ollama.ai/install.sh | sh
+
+# Добавление пользователя в группу docker (если нужно)
+sudo usermod -aG docker $USER
+
+# Перезагрузка сессии или выход/вход
+# или выполните: newgrp docker
+
+# Запуск Ollama в фоне
+ollama serve &
+
+# Установка модели (это может занять время)
+ollama pull llama2
+
+# Проверка установленных моделей
+ollama list
+
+# Проверка работы Ollama
+curl http://localhost:11434/api/tags
+```
+
+**Ollama для macOS:**
+```bash
+# Установка через Homebrew
+brew install ollama
 
 # Запуск
 ollama serve
@@ -123,20 +217,112 @@ ollama serve
 ollama pull llama2
 ```
 
-**n8n:**
+**n8n для Ubuntu:**
 ```bash
+# Установка Node.js
+curl -fsSL https://deb.nodesource.com/setup_18.x | sudo -E bash -
+sudo apt-get install -y nodejs
+
+# Установка n8n
+sudo npm install -g n8n
+
+# Запуск n8n в фоне
+n8n start &
+
+# Или запуск с настройками
+N8N_BASIC_AUTH_ACTIVE=true N8N_BASIC_AUTH_USER=admin N8N_BASIC_AUTH_PASSWORD=admin123 n8n start
+```
+
+**n8n для macOS:**
+```bash
+# Установка через Homebrew
+brew install node
 npm install -g n8n
 n8n start
 ```
 
 #### 4. Запуск приложения
 
+**Для Ubuntu (рекомендуется использовать screen/tmux):**
+
 ```bash
+# Установка screen для управления сессиями
+sudo apt install screen -y
+
+# Создание виртуального окружения
+python3 -m venv venv
+source venv/bin/activate
+
+# Установка зависимостей
+pip install -r requirements.txt
+
+# Создание папки для логов
+mkdir -p logs
+
+# Запуск в screen сессии
+screen -S f1-news-bot
+
+# В screen сессии - запуск API сервера
+python run.py
+
+# Выйти из screen: Ctrl+A, затем D
+# Вернуться в screen: screen -r f1-news-bot
+```
+
+**Для macOS:**
+```bash
+# Создание виртуального окружения
+python3 -m venv venv
+source venv/bin/activate
+
+# Установка зависимостей
+pip install -r requirements.txt
+
 # Запуск API сервера
 python run.py
 
 # В другом терминале - запуск Telegram Bot
 python -m src.telegram.bot
+```
+
+**Альтернативный запуск через systemd (Ubuntu):**
+
+Создайте systemd сервис для автоматического запуска:
+
+```bash
+# Создание сервисного файла
+sudo nano /etc/systemd/system/f1-news-bot.service
+```
+
+Содержимое файла:
+```ini
+[Unit]
+Description=F1 News Bot
+After=network.target postgresql.service redis.service
+
+[Service]
+Type=simple
+User=mcdir
+WorkingDirectory=/home/mcdir/f1-news-bot
+Environment=PATH=/home/mcdir/f1-news-bot/venv/bin
+ExecStart=/home/mcdir/f1-news-bot/venv/bin/python run.py
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+```
+
+```bash
+# Перезагрузка systemd и запуск сервиса
+sudo systemctl daemon-reload
+sudo systemctl enable f1-news-bot
+sudo systemctl start f1-news-bot
+
+# Проверка статуса
+sudo systemctl status f1-news-bot
+
+# Просмотр логов
+sudo journalctl -u f1-news-bot -f
 ```
 
 ## 🔧 Первая настройка
