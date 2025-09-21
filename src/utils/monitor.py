@@ -167,7 +167,7 @@ class SystemMonitor:
         """Check Redis connectivity"""
         try:
             # Simple ping test
-            await db_manager.redis.ping()
+            db_manager.redis.ping()
             
             return {
                 'status': True,

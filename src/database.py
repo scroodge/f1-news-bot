@@ -13,7 +13,7 @@ import redis
 import json
 
 from .config import settings
-from .models import NewsItem, ProcessedNewsItem, BotStats, SourceType
+from .models import NewsItem, ProcessedNewsItem, Stats, SourceType
 
 # Database setup
 engine = create_engine(settings.database_url)
@@ -175,7 +175,7 @@ class DatabaseManager:
             existing = session.query(NewsItemDB).filter(NewsItemDB.url == url).first()
             return existing is not None
     
-    async def get_stats(self) -> BotStats:
+    async def get_stats(self) -> Stats:
         """Get bot statistics"""
         with self.get_session() as session:
             total_collected = session.query(NewsItemDB).count()
@@ -185,7 +185,7 @@ class DatabaseManager:
             last_collection = session.query(NewsItemDB).order_by(NewsItemDB.created_at.desc()).first()
             last_collection_time = last_collection.created_at if last_collection else None
             
-            return BotStats(
+            return Stats(
                 total_news_collected=total_collected,
                 total_news_processed=total_processed,
                 total_news_published=total_published,

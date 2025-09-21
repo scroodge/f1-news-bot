@@ -30,7 +30,7 @@ class NewsItem(BaseModel):
     created_at: datetime = Field(default_factory=datetime.utcnow)
     
     class Config:
-        use_enum_values = True
+        use_enum_values = False
 
 class ProcessedNewsItem(NewsItem):
     """Processed news item with AI analysis"""
@@ -58,7 +58,7 @@ class RSSFeed(BaseModel):
     check_interval: int = 15  # minutes
     last_checked: Optional[datetime] = None
 
-class BotStats(BaseModel):
+class Stats(BaseModel):
     """Bot statistics"""
     total_news_collected: int = 0
     total_news_processed: int = 0
@@ -66,8 +66,6 @@ class BotStats(BaseModel):
     last_collection_time: Optional[datetime] = None
     last_processing_time: Optional[datetime] = None
     last_publication_time: Optional[datetime] = None
-    errors_count: int = 0
-    uptime_hours: float = 0.0
 
 class ProcessingResult(BaseModel):
     """Result of news processing"""

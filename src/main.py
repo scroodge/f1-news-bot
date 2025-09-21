@@ -19,7 +19,7 @@ from .collectors.news_collector import NewsCollector
 from .ai.content_processor import ContentProcessor
 from .moderator.content_moderator import ContentModerator
 from .moderator.publication_scheduler import PublicationScheduler
-from .telegram.bot import F1NewsBot
+from .telegram_bot.bot import F1NewsBot
 from .utils.monitor import system_monitor
 
 # Setup logging
@@ -129,6 +129,55 @@ class F1NewsBotApp:
             except Exception as e:
                 logger.error(f"Error getting stats: {e}")
                 raise HTTPException(status_code=500, detail=str(e))
+        
+        @self.app.get("/api/news")
+        async def get_news(limit: int = 20, offset: int = 0, processed: bool = None):
+            """Get collected news items"""
+            try:
+                from .database import db_manager
+                from .models import NewsItem, SourceType
+                
+                with db_manager.get_session() as session:
+                    query = session.query(db_manager.NewsItemDB)
+                    
+                    if processed is not None:
+                        query = query.filter(db_manager.NewsItemDB.processed == processed)
+                    
+                    # Order by creation time (newest first)
+                    query = query.order_by(db_manager.NewsItemDB.created_at.desc())
+                    
+                    # Apply pagination
+                    query = query.offset(offset).limit(limit)
+                    
+                    db_items = query.all()
+                    
+                    news_items = []
+                    for item in db_items:
+                        news_item = NewsItem(
+                            id=str(item.id),
+                            title=item.title,
+                            content=item.content,
+                            url=item.url,
+                            source=item.source,
+                            source_type=SourceType(item.source_type),
+                            published_at=item.published_at,
+                            relevance_score=item.relevance_score,
+                            keywords=item.keywords or [],
+                            processed=item.processed,
+                            published=item.published,
+                            created_at=item.created_at
+                        )
+                        news_items.append(news_item)
+                    
+                    return {
+                        "news_items": [item.dict() for item in news_items],
+                        "total_count": len(news_items),
+                        "limit": limit,
+                        "offset": offset
+                    }
+            except Exception as e:
+                logger.error(f"Error getting news: {e}")
+                raise HTTPException(status_code=500, detail=str(e))
     
     def _setup_middleware(self):
         """Setup middleware"""
@@ -215,7 +264,7 @@ class F1NewsBotApp:
         """Start background tasks"""
         try:
             # Initialize components
-            await db_manager.create_tables()
+            db_manager.create_tables()  # Remove await - this is a sync function
             await self.content_processor.initialize()
             await self.telegram_bot.initialize()
             

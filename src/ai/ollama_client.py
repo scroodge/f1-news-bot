@@ -2,7 +2,7 @@
 Ollama client for AI processing
 """
 import asyncio
-import aiohttp
+import requests
 import json
 from typing import Dict, Any, List, Optional
 from datetime import datetime
@@ -19,17 +19,14 @@ class OllamaClient:
     def __init__(self):
         self.base_url = settings.ollama_base_url
         self.model = settings.ollama_model
-        self.session = None
     
     async def initialize(self):
         """Initialize HTTP session"""
-        self.session = aiohttp.ClientSession()
         logger.info(f"Ollama client initialized with model: {self.model}")
     
     async def close(self):
         """Close HTTP session"""
-        if self.session:
-            await self.session.close()
+        pass
     
     async def process_news_item(self, news_item: NewsItem) -> ProcessingResult:
         """Process news item with AI"""
@@ -129,15 +126,15 @@ Response format (JSON only):
                 }
             }
             
-            async with self.session.post(url, json=payload, timeout=60) as response:
-                if response.status == 200:
-                    result = await response.json()
-                    return result.get('response', '')
-                else:
-                    logger.error(f"Ollama API returned status {response.status}")
-                    return None
+            response = requests.post(url, json=payload, timeout=60)
+            if response.status_code == 200:
+                result = response.json()
+                return result.get('response', '')
+            else:
+                logger.error(f"Ollama API returned status {response.status_code}")
+                return None
                     
-        except asyncio.TimeoutError:
+        except requests.exceptions.Timeout:
             logger.error("Timeout calling Ollama API")
             return None
         except Exception as e:
@@ -183,12 +180,9 @@ Response format (JSON only):
     async def check_health(self) -> bool:
         """Check if Ollama is healthy"""
         try:
-            if not self.session:
-                await self.initialize()
-            
             url = f"{self.base_url}/api/tags"
-            async with self.session.get(url, timeout=10) as response:
-                return response.status == 200
+            response = requests.get(url, timeout=10)
+            return response.status_code == 200
                 
         except Exception as e:
             logger.error(f"Ollama health check failed: {e}")
@@ -197,15 +191,12 @@ Response format (JSON only):
     async def get_available_models(self) -> List[str]:
         """Get list of available models"""
         try:
-            if not self.session:
-                await self.initialize()
-            
             url = f"{self.base_url}/api/tags"
-            async with self.session.get(url, timeout=10) as response:
-                if response.status == 200:
-                    data = await response.json()
-                    return [model['name'] for model in data.get('models', [])]
-                return []
+            response = requests.get(url, timeout=10)
+            if response.status_code == 200:
+                data = response.json()
+                return [model['name'] for model in data.get('models', [])]
+            return []
                 
         except Exception as e:
             logger.error(f"Error getting available models: {e}")
