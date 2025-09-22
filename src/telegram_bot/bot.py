@@ -56,12 +56,34 @@ class F1NewsBot:
             # Try to resolve channel id (support @username or numeric id)
             await self._resolve_channel_id()
 
+            # Устанавливаем меню команд
+            await self._set_bot_commands()
+
             logger.info("Telegram bot initialized successfully")
             return True
 
         except Exception as e:
             logger.error(f"Failed to initialize Telegram bot: {e}")
             return False
+
+    async def _set_bot_commands(self):
+        """Устанавливает меню команд для бота"""
+        try:
+            from telegram import BotCommand
+            
+            commands = [
+                BotCommand("start", "🚀 Начать работу с ботом"),
+                BotCommand("help", "📚 Показать справку"),
+                BotCommand("status", "📊 Статус системы и статистика"),
+                BotCommand("queue", "📋 Очередь публикаций"),
+                BotCommand("view", "👁️ Просмотр деталей новости"),
+                BotCommand("publish", "📢 Опубликовать новость")
+            ]
+            
+            await self.bot.set_my_commands(commands)
+            logger.info("Bot commands menu set successfully")
+        except Exception as e:
+            logger.error(f"Failed to set bot commands: {e}")
 
     async def run(self):
         """
@@ -119,15 +141,28 @@ class F1NewsBot:
         welcome_message = (
             "🏎️ F1 News Bot 🏎️\n\n"
             "Добро пожаловать в бота для автоматической публикации F1 новостей!\n\n"
-            "Доступные команды:\n"
-            "/help - Показать справку\n"
-            "/status - Статус системы\n"
-            "/queue - Показать очередь публикаций\n"
-            "/publish - Опубликовать следующую новость\n\n"
             "Бот автоматически собирает новости из различных источников, "
-            "обрабатывает их с помощью AI и публикует в ваш канал."
+            "обрабатывает их с помощью AI и публикует в ваш канал.\n\n"
+            "Используйте кнопки ниже или команды из меню для управления ботом."
         )
-        await update.message.reply_text(welcome_message, parse_mode=None)
+        
+        # Создаем inline клавиатуру с основными командами
+        keyboard = [
+            [
+                InlineKeyboardButton("📊 Статус", callback_data="menu_status"),
+                InlineKeyboardButton("📋 Очередь", callback_data="menu_queue")
+            ],
+            [
+                InlineKeyboardButton("👁️ Просмотр", callback_data="menu_view"),
+                InlineKeyboardButton("📢 Публикация", callback_data="menu_publish")
+            ],
+            [
+                InlineKeyboardButton("📚 Справка", callback_data="menu_help")
+            ]
+        ]
+        reply_markup = InlineKeyboardMarkup(keyboard)
+        
+        await update.message.reply_text(welcome_message, parse_mode=None, reply_markup=reply_markup)
 
     async def help_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         help_message = (
@@ -178,8 +213,11 @@ class F1NewsBot:
                 "⏰ Последнее обновление: Сейчас"
             )
             
-            # Создаем кнопку обновления
-            keyboard = [[InlineKeyboardButton("🔄 Обновить", callback_data="status_refresh")]]
+            # Создаем кнопки
+            keyboard = [
+                [InlineKeyboardButton("🔄 Обновить", callback_data="status_refresh")],
+                [InlineKeyboardButton("🏠 Главное меню", callback_data="menu_start")]
+            ]
             reply_markup = InlineKeyboardMarkup(keyboard)
             
             await update.message.reply_text(status_message, parse_mode=None, reply_markup=reply_markup)
@@ -238,8 +276,9 @@ class F1NewsBot:
                 if page_buttons:
                     keyboard.append(page_buttons)
 
-            # Кнопка обновления
+            # Кнопки управления
             keyboard.append([InlineKeyboardButton("🔄 Обновить", callback_data="queue_refresh")])
+            keyboard.append([InlineKeyboardButton("🏠 Главное меню", callback_data="menu_start")])
 
             reply_markup = InlineKeyboardMarkup(keyboard) if keyboard else None
 
@@ -402,6 +441,50 @@ class F1NewsBot:
                 if item_id == "refresh":
                     # Обновляем статус
                     await self.status_command(update, context)
+            elif action == "menu":
+                # Обработка кнопок меню
+                if item_id == "status":
+                    await self.status_command(update, context)
+                elif item_id == "queue":
+                    await self.queue_command(update, context)
+                elif item_id == "view":
+                    await query.edit_message_text(
+                        "👁️ Просмотр деталей новости\n\n"
+                        "Используйте команду /view <номер>\n"
+                        "Пример: /view 1 - показать детали первой новости\n\n"
+                        "Или используйте кнопки в /queue для навигации",
+                        parse_mode=None
+                    )
+                elif item_id == "publish":
+                    await self.publish_command(update, context)
+                elif item_id == "help":
+                    await self.help_command(update, context)
+                elif item_id == "start":
+                    # Возвращаемся к главному меню
+                    welcome_message = (
+                        "🏎️ F1 News Bot 🏎️\n\n"
+                        "Добро пожаловать в бота для автоматической публикации F1 новостей!\n\n"
+                        "Бот автоматически собирает новости из различных источников, "
+                        "обрабатывает их с помощью AI и публикует в ваш канал.\n\n"
+                        "Используйте кнопки ниже или команды из меню для управления ботом."
+                    )
+                    
+                    keyboard = [
+                        [
+                            InlineKeyboardButton("📊 Статус", callback_data="menu_status"),
+                            InlineKeyboardButton("📋 Очередь", callback_data="menu_queue")
+                        ],
+                        [
+                            InlineKeyboardButton("👁️ Просмотр", callback_data="menu_view"),
+                            InlineKeyboardButton("📢 Публикация", callback_data="menu_publish")
+                        ],
+                        [
+                            InlineKeyboardButton("📚 Справка", callback_data="menu_help")
+                        ]
+                    ]
+                    reply_markup = InlineKeyboardMarkup(keyboard)
+                    
+                    await query.edit_message_text(welcome_message, parse_mode=None, reply_markup=reply_markup)
             else:
                 logger.warning("Unknown action or missing item_id: %s", data)
                 await query.edit_message_text("❌ Неизвестная команда")
