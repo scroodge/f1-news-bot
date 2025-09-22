@@ -46,6 +46,7 @@ class F1NewsBot:
             self.application.add_handler(CommandHandler("status", self.status_command))
             self.application.add_handler(CommandHandler("queue", self.queue_command))
             self.application.add_handler(CommandHandler("publish", self.publish_command))
+            self.application.add_handler(CommandHandler("view", self.view_command))
 
             # Сносим старый webhook и дропаем висящие апдейты,
             # чтобы polling принимал ВСЕ типы, включая callback_query
@@ -133,13 +134,18 @@ class F1NewsBot:
             "/start - Начать работу с ботом\n"
             "/help - Показать эту справку\n"
             "/status - Показать статус системы и статистику\n"
-            "/queue - Показать очередь публикаций\n"
+            "/queue - Показать очередь публикаций (с кнопками навигации)\n"
+            "/view <номер> - Показать детали конкретной новости\n"
             "/publish - Опубликовать следующую новость из очереди\n\n"
             "Как работает бот:\n"
             "1) Собирает новости из RSS, Telegram каналов, Reddit\n"
             "2) Обрабатывает контент с помощью Ollama AI\n"
             "3) Модерирует и фильтрует контент\n"
-            "4) Публикует в ваш канал\n"
+            "4) Публикует в ваш канал\n\n"
+            "💡 Подсказки:\n"
+            "• Используйте кнопки в /queue для навигации по страницам\n"
+            "• /view 1 покажет детали первой новости\n"
+            "• Все кнопки интерактивны и обновляют сообщения"
         )
         await update.message.reply_text(help_message, parse_mode=None)
 
@@ -170,21 +176,74 @@ class F1NewsBot:
                 await update.message.reply_text("📭 Очередь публикаций пуста")
                 return
 
-            queue_message = "📋 Очередь публикаций:\n\n"
-            for i, item in enumerate(self.pending_publications[:5], 1):
+            # Получаем номер страницы из callback_data или используем 0
+            page = 0
+            if update.callback_query and update.callback_query.data:
+                try:
+                    page = int(update.callback_query.data.split('_')[1])
+                except (IndexError, ValueError):
+                    page = 0
+
+            items_per_page = 5
+            start_idx = page * items_per_page
+            end_idx = start_idx + items_per_page
+            total_items = len(self.pending_publications)
+            total_pages = (total_items + items_per_page - 1) // items_per_page
+
+            queue_message = f"📋 Очередь публикаций (стр. {page + 1}/{total_pages}):\n\n"
+            
+            for i, item in enumerate(self.pending_publications[start_idx:end_idx], start_idx + 1):
                 queue_message += (
                     f"{i}. {item.title[:50]}...\n"
                     f"   Источник: {item.source}\n"
                     f"   Релевантность: {item.relevance_score:.2f}\n"
                     f"   Важность: {item.importance_level}/5\n\n"
                 )
-            if len(self.pending_publications) > 5:
-                queue_message += f"... и ещё {len(self.pending_publications) - 5} новостей"
 
-            await update.message.reply_text(queue_message, parse_mode=None)
+            # Создаем кнопки навигации
+            keyboard = []
+            if total_pages > 1:
+                nav_buttons = []
+                if page > 0:
+                    nav_buttons.append(InlineKeyboardButton("⬅️ Назад", callback_data=f"queue_{page-1}"))
+                if page < total_pages - 1:
+                    nav_buttons.append(InlineKeyboardButton("Вперед ➡️", callback_data=f"queue_{page+1}"))
+                if nav_buttons:
+                    keyboard.append(nav_buttons)
+                
+                # Кнопки для быстрого перехода к страницам
+                page_buttons = []
+                for p in range(max(0, page-2), min(total_pages, page+3)):
+                    if p == page:
+                        page_buttons.append(InlineKeyboardButton(f"•{p+1}•", callback_data=f"queue_{p}"))
+                    else:
+                        page_buttons.append(InlineKeyboardButton(f"{p+1}", callback_data=f"queue_{p}"))
+                if page_buttons:
+                    keyboard.append(page_buttons)
+
+            # Кнопка обновления
+            keyboard.append([InlineKeyboardButton("🔄 Обновить", callback_data="queue_refresh")])
+
+            reply_markup = InlineKeyboardMarkup(keyboard) if keyboard else None
+
+            if update.callback_query:
+                await update.callback_query.edit_message_text(
+                    queue_message, 
+                    parse_mode=None, 
+                    reply_markup=reply_markup
+                )
+            else:
+                await update.message.reply_text(
+                    queue_message, 
+                    parse_mode=None, 
+                    reply_markup=reply_markup
+                )
         except Exception as e:
             logger.error(f"Error in queue command: {e}")
-            await update.message.reply_text("❌ Ошибка получения очереди")
+            if update.callback_query:
+                await update.callback_query.edit_message_text("❌ Ошибка получения очереди")
+            else:
+                await update.message.reply_text("❌ Ошибка получения очереди")
 
     async def publish_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         try:
@@ -218,6 +277,81 @@ class F1NewsBot:
             logger.error(f"Error in publish command: {e}")
             await update.message.reply_text("❌ Ошибка публикации")
 
+    async def view_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle /view command - show detailed info about specific news item"""
+        try:
+            if not context.args:
+                await update.message.reply_text(
+                    "📖 Использование: /view <номер>\n"
+                    "Пример: /view 1 - показать детали первой новости"
+                )
+                return
+
+            try:
+                item_number = int(context.args[0])
+            except ValueError:
+                await update.message.reply_text("❌ Номер должен быть числом")
+                return
+
+            if not self.pending_publications:
+                await update.message.reply_text("📭 Очередь публикаций пуста")
+                return
+
+            if item_number < 1 or item_number > len(self.pending_publications):
+                await update.message.reply_text(
+                    f"❌ Номер должен быть от 1 до {len(self.pending_publications)}"
+                )
+                return
+
+            item = self.pending_publications[item_number - 1]
+            
+            # Создаем детальное сообщение
+            message = f"📰 **Детали новости #{item_number}:**\n\n"
+            message += f"**Заголовок:** {item.title}\n\n"
+            
+            if item.summary:
+                message += f"**Краткое содержание:**\n{item.summary}\n\n"
+            
+            if item.key_points:
+                message += "**Ключевые моменты:**\n"
+                for i, point in enumerate(item.key_points, 1):
+                    message += f"{i}. {point}\n"
+                message += "\n"
+            
+            message += f"**Источник:** {item.source}\n"
+            message += f"**URL:** {item.url}\n"
+            message += f"**Релевантность:** {item.relevance_score:.2f}\n"
+            message += f"**Важность:** {item.importance_level}/5\n"
+            message += f"**Настроение:** {item.sentiment}\n"
+            
+            if item.tags:
+                message += f"**Теги:** {', '.join(item.tags)}\n"
+            
+            message += f"**Дата публикации:** {item.published_at}\n"
+            
+            # Создаем кнопки для действий
+            keyboard = [
+                [
+                    InlineKeyboardButton("✅ Опубликовать", callback_data=f"publish_{item.id}"),
+                    InlineKeyboardButton("❌ Отклонить", callback_data=f"reject_{item.id}")
+                ],
+                [
+                    InlineKeyboardButton("📝 Редактировать", callback_data=f"edit_{item.id}"),
+                    InlineKeyboardButton("📋 К очереди", callback_data="queue_0")
+                ]
+            ]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+
+            await update.message.reply_text(
+                message, 
+                parse_mode=None, 
+                reply_markup=reply_markup
+            )
+            
+        except Exception as e:
+            logger.error(f"Error in view command: {e}")
+            await update.message.reply_text("❌ Ошибка просмотра новости")
+
 
     async def button_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Единая обработка callback_query с безопасным парсингом данных"""
@@ -240,6 +374,13 @@ class F1NewsBot:
                 await self._handle_reject(item_id, query)
             elif action == "edit" and item_id:
                 await self._handle_edit(item_id, query)
+            elif action == "queue":
+                if item_id == "refresh":
+                    # Обновляем очередь
+                    await self.queue_command(update, context)
+                else:
+                    # Переходим на страницу
+                    await self.queue_command(update, context)
             else:
                 logger.warning("Unknown action or missing item_id: %s", data)
                 await query.edit_message_text("❌ Неизвестная команда")
