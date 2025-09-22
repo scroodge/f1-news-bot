@@ -38,11 +38,8 @@ cp config.env.example .env
 ### Пошаговый запуск
 
 ```bash
-# 1. Основное приложение
+# Запуск всей системы (Main App + Telegram Bot)
 docker-compose up -d
-
-# 2. Telegram бот (отдельно)
-docker-compose -f docker-compose-bot.yml up -d
 ```
 
 ### Проверка работы
@@ -56,11 +53,9 @@ docker-compose -f docker-compose-bot.yml up -d
 ```bash
 # Просмотр логов
 docker-compose logs -f f1-news-bot
-docker-compose -f docker-compose-bot.yml logs -f f1-news-bot-telegram
 
 # Остановка
 docker-compose down
-docker-compose -f docker-compose-bot.yml down
 ```
 
 ## Архитектура

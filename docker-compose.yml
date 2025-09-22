@@ -12,7 +12,7 @@ services:
       timeout: 10s
       retries: 3
 
-  # F1 News Bot API
+  # F1 News Bot (Main App + Telegram Bot)
   f1-news-bot:
     build: .
     ports:

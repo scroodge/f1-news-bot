@@ -34,17 +34,13 @@ echo "✅ Переменные окружения загружены"
 # Создаем директорию для логов
 mkdir -p logs
 
-# Запускаем основное приложение
-echo "1️⃣ Запуск основного приложения..."
+# Запускаем всю систему
+echo "🚀 Запуск F1 News Bot (Main App + Telegram Bot)..."
 docker-compose up -d
 
 # Ждем запуска
-echo "⏳ Ожидание запуска основного приложения..."
-sleep 10
-
-# Запускаем Telegram бота
-echo "2️⃣ Запуск Telegram бота..."
-docker-compose -f docker-compose-bot.yml up -d
+echo "⏳ Ожидание запуска системы..."
+sleep 15
 
 echo ""
 echo "✅ Система запущена!"
@@ -55,11 +51,8 @@ echo ""
 echo "📊 Статус контейнеров:"
 docker-compose ps
 echo ""
-echo "📋 Логи основного приложения:"
+echo "📋 Логи системы:"
 echo "docker-compose logs -f f1-news-bot"
 echo ""
-echo "📋 Логи Telegram бота:"
-echo "docker-compose -f docker-compose-bot.yml logs -f f1-news-bot-telegram"
-echo ""
 echo "🛑 Остановка системы:"
-echo "docker-compose down && docker-compose -f docker-compose-bot.yml down"
+echo "docker-compose down"
