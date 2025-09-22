@@ -13,7 +13,7 @@ import redis
 import json
 
 from .config import settings
-from .models import NewsItem, ProcessedNewsItem, Stats, SourceType
+from .models import NewsItem, ProcessedNewsItem, PublishedNewsItem, Stats, SourceType
 
 # Database setup
 engine = create_engine(settings.database_url)
@@ -47,6 +47,39 @@ class NewsItemDB(Base):
     importance_level = Column(Integer, default=1)
     formatted_content = Column(Text, nullable=True)
     tags = Column(JSON, default=list)
+
+class PublishedNewsItemDB(Base):
+    """Published news item database model"""
+    __tablename__ = "published_news_items"
+    
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    title = Column(String, nullable=False)
+    content = Column(Text, nullable=False)
+    url = Column(String, nullable=False)
+    source = Column(String, nullable=False)
+    source_type = Column(String, nullable=False)
+    published_at = Column(DateTime, nullable=False)
+    relevance_score = Column(Float, default=0.0)
+    keywords = Column(JSON, default=list)
+    processed = Column(Boolean, default=True)
+    published = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    
+    # Processed fields
+    summary = Column(Text, nullable=True)
+    key_points = Column(JSON, default=list)
+    sentiment = Column(String, default="neutral")
+    importance_level = Column(Integer, default=1)
+    formatted_content = Column(Text, nullable=True)
+    tags = Column(JSON, default=list)
+    
+    # Publication fields
+    published_by = Column(String, default="telegram_bot")
+    telegram_message_id = Column(Integer, nullable=True)
+    publication_status = Column(String, default="published")
+    views_count = Column(Integer, default=0)
+    engagement_count = Column(Integer, default=0)
+    publication_created_at = Column(DateTime, default=datetime.utcnow)
 
 class DatabaseManager:
     """Database operations manager"""
@@ -209,6 +242,93 @@ class DatabaseManager:
         keys = self.redis.keys(pattern)
         if keys:
             self.redis.delete(*keys)
+    
+    # Published news operations
+    async def save_published_news(self, news_item: ProcessedNewsItem, telegram_message_id: int = None) -> str:
+        """Save published news item to database"""
+        with self.get_session() as session:
+            published_item = PublishedNewsItemDB(
+                title=news_item.title,
+                content=news_item.content,
+                url=news_item.url,
+                source=news_item.source,
+                source_type=news_item.source_type.value,
+                published_at=news_item.published_at,
+                relevance_score=news_item.relevance_score,
+                keywords=news_item.keywords or [],
+                processed=True,
+                published=True,
+                created_at=news_item.created_at,
+                summary=news_item.summary,
+                key_points=news_item.key_points or [],
+                sentiment=news_item.sentiment,
+                importance_level=news_item.importance_level,
+                formatted_content=news_item.formatted_content,
+                tags=news_item.tags or [],
+                published_by="telegram_bot",
+                telegram_message_id=telegram_message_id,
+                publication_status="published",
+                views_count=0,
+                engagement_count=0
+            )
+            session.add(published_item)
+            session.commit()
+            return str(published_item.id)
+    
+    async def get_published_news(self, limit: int = 10, offset: int = 0) -> List[PublishedNewsItem]:
+        """Get published news items"""
+        with self.get_session() as session:
+            db_items = session.query(PublishedNewsItemDB)\
+                .order_by(PublishedNewsItemDB.publication_created_at.desc())\
+                .offset(offset)\
+                .limit(limit)\
+                .all()
+            
+            return [
+                PublishedNewsItem(
+                    id=str(item.id),
+                    title=item.title,
+                    content=item.content,
+                    url=item.url,
+                    source=item.source,
+                    source_type=SourceType(item.source_type),
+                    published_at=item.published_at,
+                    relevance_score=item.relevance_score,
+                    keywords=item.keywords or [],
+                    processed=item.processed,
+                    published=item.published,
+                    created_at=item.created_at,
+                    summary=item.summary or "",
+                    key_points=item.key_points or [],
+                    sentiment=item.sentiment,
+                    importance_level=item.importance_level,
+                    formatted_content=item.formatted_content or "",
+                    tags=item.tags or [],
+                    published_by=item.published_by,
+                    telegram_message_id=item.telegram_message_id,
+                    publication_status=item.publication_status,
+                    views_count=item.views_count,
+                    engagement_count=item.engagement_count
+                )
+                for item in db_items
+            ]
+    
+    async def get_published_stats(self) -> Dict[str, int]:
+        """Get published news statistics"""
+        with self.get_session() as session:
+            total_published = session.query(PublishedNewsItemDB).count()
+            today_published = session.query(PublishedNewsItemDB)\
+                .filter(PublishedNewsItemDB.publication_created_at >= datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0))\
+                .count()
+            this_week_published = session.query(PublishedNewsItemDB)\
+                .filter(PublishedNewsItemDB.publication_created_at >= datetime.utcnow() - timedelta(days=7))\
+                .count()
+            
+            return {
+                "total_published": total_published,
+                "today_published": today_published,
+                "this_week_published": this_week_published
+            }
 
 # Global database manager instance
 db_manager = DatabaseManager()

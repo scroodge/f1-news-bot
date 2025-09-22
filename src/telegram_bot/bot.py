@@ -48,6 +48,7 @@ class F1NewsBot:
             self.application.add_handler(CommandHandler("queue", self.queue_command))
             self.application.add_handler(CommandHandler("publish", self.publish_command))
             self.application.add_handler(CommandHandler("view", self.view_command))
+            self.application.add_handler(CommandHandler("published", self.published_command))
 
             # Сносим старый webhook и дропаем висящие апдейты,
             # чтобы polling принимал ВСЕ типы, включая callback_query
@@ -76,6 +77,7 @@ class F1NewsBot:
                 BotCommand("help", "📚 Показать справку"),
                 BotCommand("status", "📊 Статус системы и статистика"),
                 BotCommand("queue", "📋 Очередь публикаций"),
+                BotCommand("published", "📰 Опубликованные новости"),
                 BotCommand("view", "👁️ Просмотр деталей новости"),
                 BotCommand("publish", "📢 Опубликовать новость")
             ]
@@ -171,15 +173,17 @@ class F1NewsBot:
             "/help - Показать эту справку\n"
             "/status - Показать статус системы и статистику\n"
             "/queue - Показать очередь публикаций (с кнопками навигации)\n"
+            "/published - Показать опубликованные новости\n"
             "/view <номер> - Показать детали конкретной новости\n"
             "/publish - Опубликовать следующую новость из очереди\n\n"
             "Как работает бот:\n"
             "1) Собирает новости из RSS, Telegram каналов, Reddit\n"
             "2) Обрабатывает контент с помощью Ollama AI\n"
             "3) Модерирует и фильтрует контент\n"
-            "4) Публикует в ваш канал\n\n"
+            "4) Публикует в ваш канал и сохраняет в базу данных\n\n"
             "💡 Подсказки:\n"
             "• Используйте кнопки в /queue для навигации по страницам\n"
+            "• /published показывает все опубликованные новости\n"
             "• /view 1 покажет детали первой новости\n"
             "• Все кнопки интерактивны и обновляют сообщения"
         )
@@ -188,13 +192,24 @@ class F1NewsBot:
 
     async def status_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         try:
-            # Получаем реальную статистику
+            # Получаем реальную статистику из базы данных
             queue_count = len(self.pending_publications)
             
-            # Подсчитываем статистику по новостям в очереди
-            total_news = queue_count + self.published_count
-            processed_news = queue_count + self.published_count  # Все новости в очереди уже обработаны
-            published_news = self.published_count  # Реальный счетчик опубликованных
+            try:
+                # Получаем статистику из базы данных
+                published_stats = await db_manager.get_published_stats()
+                published_news = published_stats.get("total_published", 0)
+                today_published = published_stats.get("today_published", 0)
+                this_week_published = published_stats.get("this_week_published", 0)
+            except Exception as e:
+                logger.error(f"Failed to get published stats from database: {e}")
+                published_news = self.published_count  # Fallback to memory counter
+                today_published = 0
+                this_week_published = 0
+            
+            # Подсчитываем общую статистику
+            total_news = queue_count + published_news
+            processed_news = queue_count + published_news  # Все новости в очереди уже обработаны
             
             # Определяем статус системы
             system_status = "🟢 Активна" if queue_count > 0 else "🟡 Ожидание новостей"
@@ -210,6 +225,9 @@ class F1NewsBot:
                 f"• Новостей обработано: {processed_news}\n"
                 f"• Новостей опубликовано: {published_news}\n"
                 f"• В очереди: {queue_count}\n\n"
+                "📅 Публикации:\n"
+                f"• Сегодня: {today_published}\n"
+                f"• За неделю: {this_week_published}\n\n"
                 "⏰ Последнее обновление: Сейчас"
             )
             
@@ -408,6 +426,93 @@ class F1NewsBot:
             logger.error(f"Error in view command: {e}")
             await update.message.reply_text("❌ Ошибка просмотра новости")
 
+    async def published_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Handle /published command - show published news"""
+        try:
+            # Получаем номер страницы из callback_data или используем 0
+            page = 0
+            if update.callback_query and update.callback_query.data:
+                try:
+                    page = int(update.callback_query.data.split('_')[1])
+                except (IndexError, ValueError):
+                    page = 0
+
+            items_per_page = 5
+            offset = page * items_per_page
+
+            # Получаем опубликованные новости из базы данных
+            try:
+                published_news = await db_manager.get_published_news(limit=items_per_page, offset=offset)
+                total_published = await db_manager.get_published_stats()
+                total_count = total_published.get("total_published", 0)
+            except Exception as e:
+                logger.error(f"Failed to get published news from database: {e}")
+                await update.message.reply_text("❌ Ошибка получения опубликованных новостей")
+                return
+
+            if not published_news:
+                message = "📭 Опубликованных новостей пока нет"
+                if update.callback_query:
+                    await update.callback_query.edit_message_text(message, parse_mode=None)
+                else:
+                    await update.message.reply_text(message, parse_mode=None)
+                return
+
+            total_pages = (total_count + items_per_page - 1) // items_per_page
+            message = f"📰 Опубликованные новости (стр. {page + 1}/{total_pages}):\n\n"
+            
+            for i, item in enumerate(published_news, offset + 1):
+                message += f"{i}. {item.title[:50]}...\n"
+                message += f"   Источник: {item.source}\n"
+                message += f"   Опубликовано: {item.published_at.strftime('%d.%m.%Y %H:%M')}\n"
+                message += f"   Важность: {item.importance_level}/5\n\n"
+
+            # Создаем кнопки навигации
+            keyboard = []
+            if total_pages > 1:
+                nav_buttons = []
+                if page > 0:
+                    nav_buttons.append(InlineKeyboardButton("⬅️ Назад", callback_data=f"published_{page-1}"))
+                if page < total_pages - 1:
+                    nav_buttons.append(InlineKeyboardButton("Вперед ➡️", callback_data=f"published_{page+1}"))
+                if nav_buttons:
+                    keyboard.append(nav_buttons)
+                
+                # Кнопки для быстрого перехода к страницам
+                page_buttons = []
+                for p in range(max(0, page-2), min(total_pages, page+3)):
+                    if p == page:
+                        page_buttons.append(InlineKeyboardButton(f"•{p+1}•", callback_data=f"published_{p}"))
+                    else:
+                        page_buttons.append(InlineKeyboardButton(f"{p+1}", callback_data=f"published_{p}"))
+                if page_buttons:
+                    keyboard.append(page_buttons)
+
+            # Кнопки управления
+            keyboard.append([InlineKeyboardButton("🔄 Обновить", callback_data="published_refresh")])
+            keyboard.append([InlineKeyboardButton("🏠 Главное меню", callback_data="menu_start")])
+
+            reply_markup = InlineKeyboardMarkup(keyboard) if keyboard else None
+
+            if update.callback_query:
+                await update.callback_query.edit_message_text(
+                    message, 
+                    parse_mode=None, 
+                    reply_markup=reply_markup
+                )
+            else:
+                await update.message.reply_text(
+                    message, 
+                    parse_mode=None, 
+                    reply_markup=reply_markup
+                )
+        except Exception as e:
+            logger.error(f"Error in published command: {e}")
+            if update.callback_query:
+                await update.callback_query.edit_message_text("❌ Ошибка получения опубликованных новостей")
+            else:
+                await update.message.reply_text("❌ Ошибка получения опубликованных новостей")
+
 
     async def button_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Единая обработка callback_query с безопасным парсингом данных"""
@@ -430,6 +535,19 @@ class F1NewsBot:
                 await self._handle_reject(item_id, query)
             elif action == "edit" and item_id:
                 await self._handle_edit(item_id, query)
+            elif action == "edit_field" and item_id:
+                # Обработка выбора поля для редактирования
+                field = data.split("_")[2] if len(data.split("_")) > 2 else None
+                await self._handle_edit_field(item_id, field, query)
+            elif action == "edit_save" and item_id:
+                await self._handle_edit_save(item_id, query)
+            elif action == "edit_cancel" and item_id:
+                await self._handle_edit_cancel(item_id, query)
+            elif action == "edit_set" and item_id:
+                # Обработка установки значений при редактировании
+                field = data.split("_")[2] if len(data.split("_")) > 2 else None
+                value = data.split("_")[3] if len(data.split("_")) > 3 else None
+                await self._handle_edit_set(item_id, field, value, query)
             elif action == "queue":
                 if item_id == "refresh":
                     # Обновляем очередь
@@ -441,6 +559,13 @@ class F1NewsBot:
                 if item_id == "refresh":
                     # Обновляем статус
                     await self.status_command(update, context)
+            elif action == "published":
+                if item_id == "refresh":
+                    # Обновляем опубликованные новости
+                    await self.published_command(update, context)
+                else:
+                    # Переходим на страницу
+                    await self.published_command(update, context)
             elif action == "menu":
                 # Обработка кнопок меню
                 if item_id == "status":
@@ -503,6 +628,17 @@ class F1NewsBot:
                 return
             result = await self.publish_to_channel(item)
             if result.success:
+                # Сохраняем опубликованную новость в базу данных
+                try:
+                    telegram_message_id = None
+                    if hasattr(result, 'message_id'):
+                        telegram_message_id = result.message_id
+                    
+                    published_id = await db_manager.save_published_news(item, telegram_message_id)
+                    logger.info(f"Published news saved to database with ID: {published_id}")
+                except Exception as e:
+                    logger.error(f"Failed to save published news to database: {e}")
+                
                 # удаляем опубликованный и увеличиваем счетчик
                 self.pending_publications = [it for it in self.pending_publications if it.id != item_id]
                 self.published_count += 1
@@ -522,7 +658,228 @@ class F1NewsBot:
             await query.edit_message_text("❌ Ошибка отклонения")
 
     async def _handle_edit(self, item_id: str, query):
-        await query.edit_message_text("📝 Функция редактирования в разработке")
+        """Обработка редактирования новости"""
+        try:
+            item = next((it for it in self.pending_publications if it.id == item_id), None)
+            if not item:
+                await query.edit_message_text("❌ Новость не найдена")
+                return
+            
+            # Создаем интерфейс редактирования
+            edit_message = f"📝 **Редактирование новости:**\n\n"
+            edit_message += f"**Заголовок:** {item.title}\n\n"
+            edit_message += f"**Краткое содержание:**\n{item.summary}\n\n"
+            edit_message += f"**Источник:** {item.source}\n"
+            edit_message += f"**URL:** {item.url}\n"
+            edit_message += f"**Релевантность:** {item.relevance_score:.2f}\n"
+            edit_message += f"**Важность:** {item.importance_level}/5\n"
+            edit_message += f"**Настроение:** {item.sentiment}\n\n"
+            edit_message += "Выберите, что хотите отредактировать:"
+            
+            # Создаем кнопки для выбора поля редактирования
+            keyboard = [
+                [
+                    InlineKeyboardButton("📝 Заголовок", callback_data=f"edit_field_{item_id}_title"),
+                    InlineKeyboardButton("📄 Содержание", callback_data=f"edit_field_{item_id}_summary")
+                ],
+                [
+                    InlineKeyboardButton("⭐ Важность", callback_data=f"edit_field_{item_id}_importance"),
+                    InlineKeyboardButton("🏷️ Теги", callback_data=f"edit_field_{item_id}_tags")
+                ],
+                [
+                    InlineKeyboardButton("✅ Сохранить", callback_data=f"edit_save_{item_id}"),
+                    InlineKeyboardButton("❌ Отмена", callback_data=f"edit_cancel_{item_id}")
+                ],
+                [
+                    InlineKeyboardButton("🏠 Главное меню", callback_data="menu_start")
+                ]
+            ]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            
+            await query.edit_message_text(edit_message, parse_mode=None, reply_markup=reply_markup)
+            
+        except Exception as e:
+            logger.error(f"Error handling edit: {e}", exc_info=True)
+            await query.edit_message_text("❌ Ошибка редактирования")
+
+    async def _handle_edit_field(self, item_id: str, field: str, query):
+        """Обработка выбора поля для редактирования"""
+        try:
+            item = next((it for it in self.pending_publications if it.id == item_id), None)
+            if not item:
+                await query.edit_message_text("❌ Новость не найдена")
+                return
+            
+            if field == "title":
+                message = f"📝 **Редактирование заголовка:**\n\n"
+                message += f"Текущий заголовок:\n{item.title}\n\n"
+                message += "Выберите новый заголовок:"
+                
+                keyboard = [
+                    [InlineKeyboardButton("📝 Короткий заголовок", callback_data=f"edit_set_{item_id}_title_short")],
+                    [InlineKeyboardButton("📝 Длинный заголовок", callback_data=f"edit_set_{item_id}_title_long")],
+                    [InlineKeyboardButton("❌ Отмена", callback_data=f"edit_{item_id}")]
+                ]
+                
+            elif field == "summary":
+                message = f"📄 **Редактирование содержания:**\n\n"
+                message += f"Текущее содержание:\n{item.summary}\n\n"
+                message += "Выберите новое содержание:"
+                
+                keyboard = [
+                    [InlineKeyboardButton("📄 Краткое содержание", callback_data=f"edit_set_{item_id}_summary_short")],
+                    [InlineKeyboardButton("📄 Подробное содержание", callback_data=f"edit_set_{item_id}_summary_long")],
+                    [InlineKeyboardButton("❌ Отмена", callback_data=f"edit_{item_id}")]
+                ]
+                
+            elif field == "importance":
+                message = f"⭐ **Редактирование важности:**\n\n"
+                message += f"Текущая важность: {item.importance_level}/5\n\n"
+                message += "Выберите новую важность:"
+                
+                keyboard = [
+                    [InlineKeyboardButton("1 ⭐", callback_data=f"edit_set_{item_id}_importance_1"),
+                     InlineKeyboardButton("2 ⭐", callback_data=f"edit_set_{item_id}_importance_2"),
+                     InlineKeyboardButton("3 ⭐", callback_data=f"edit_set_{item_id}_importance_3")],
+                    [InlineKeyboardButton("4 ⭐", callback_data=f"edit_set_{item_id}_importance_4"),
+                     InlineKeyboardButton("5 ⭐", callback_data=f"edit_set_{item_id}_importance_5")],
+                    [InlineKeyboardButton("❌ Отмена", callback_data=f"edit_{item_id}")]
+                ]
+                
+            elif field == "tags":
+                message = f"🏷️ **Редактирование тегов:**\n\n"
+                message += f"Текущие теги: {', '.join(item.tags) if item.tags else 'Нет'}\n\n"
+                message += "Выберите новые теги:"
+                
+                keyboard = [
+                    [InlineKeyboardButton("🏎️ F1", callback_data=f"edit_set_{item_id}_tags_f1"),
+                     InlineKeyboardButton("🏆 Гонка", callback_data=f"edit_set_{item_id}_tags_race")],
+                    [InlineKeyboardButton("🏁 Квалификация", callback_data=f"edit_set_{item_id}_tags_qualifying"),
+                     InlineKeyboardButton("📊 Статистика", callback_data=f"edit_set_{item_id}_tags_stats")],
+                    [InlineKeyboardButton("❌ Отмена", callback_data=f"edit_{item_id}")]
+                ]
+            else:
+                await query.edit_message_text("❌ Неизвестное поле для редактирования")
+                return
+            
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            await query.edit_message_text(message, parse_mode=None, reply_markup=reply_markup)
+            
+        except Exception as e:
+            logger.error(f"Error handling edit field: {e}", exc_info=True)
+            await query.edit_message_text("❌ Ошибка редактирования поля")
+
+    async def _handle_edit_save(self, item_id: str, query):
+        """Сохранение изменений в новости"""
+        try:
+            item = next((it for it in self.pending_publications if it.id == item_id), None)
+            if not item:
+                await query.edit_message_text("❌ Новость не найдена")
+                return
+            
+            # Пока просто показываем успешное сохранение
+            # В будущем здесь можно добавить реальное сохранение изменений
+            await query.edit_message_text("✅ Изменения сохранены!")
+            
+        except Exception as e:
+            logger.error(f"Error handling edit save: {e}", exc_info=True)
+            await query.edit_message_text("❌ Ошибка сохранения")
+
+    async def _handle_edit_cancel(self, item_id: str, query):
+        """Отмена редактирования"""
+        try:
+            item = next((it for it in self.pending_publications if it.id == item_id), None)
+            if not item:
+                await query.edit_message_text("❌ Новость не найдена")
+                return
+            
+            # Возвращаемся к просмотру новости
+            message = f"📰 **Детали новости:**\n\n"
+            message += f"**Заголовок:** {item.title}\n\n"
+            message += f"**Краткое содержание:**\n{item.summary}\n\n"
+            message += f"**Источник:** {item.source}\n"
+            message += f"**URL:** {item.url}\n"
+            message += f"**Релевантность:** {item.relevance_score:.2f}\n"
+            message += f"**Важность:** {item.importance_level}/5\n"
+            message += f"**Настроение:** {item.sentiment}\n"
+            
+            if item.tags:
+                message += f"**Теги:** {', '.join(item.tags)}\n"
+            
+            message += f"**Дата публикации:** {item.published_at}\n"
+            
+            keyboard = [
+                [
+                    InlineKeyboardButton("✅ Опубликовать", callback_data=f"publish_{item.id}"),
+                    InlineKeyboardButton("❌ Отклонить", callback_data=f"reject_{item.id}")
+                ],
+                [
+                    InlineKeyboardButton("📝 Редактировать", callback_data=f"edit_{item.id}"),
+                    InlineKeyboardButton("📋 К очереди", callback_data="queue_0")
+                ]
+            ]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            
+            await query.edit_message_text(message, parse_mode=None, reply_markup=reply_markup)
+            
+        except Exception as e:
+            logger.error(f"Error handling edit cancel: {e}", exc_info=True)
+            await query.edit_message_text("❌ Ошибка отмены редактирования")
+
+    async def _handle_edit_set(self, item_id: str, field: str, value: str, query):
+        """Обработка установки значений при редактировании"""
+        try:
+            item = next((it for it in self.pending_publications if it.id == item_id), None)
+            if not item:
+                await query.edit_message_text("❌ Новость не найдена")
+                return
+            
+            # Применяем изменения к новости
+            if field == "title":
+                if value == "short":
+                    item.title = item.title[:50] + "..." if len(item.title) > 50 else item.title
+                elif value == "long":
+                    item.title = item.title + " - Подробная информация"
+                message = f"✅ Заголовок изменен на: {item.title}"
+                
+            elif field == "summary":
+                if value == "short":
+                    item.summary = item.summary[:100] + "..." if len(item.summary) > 100 else item.summary
+                elif value == "long":
+                    item.summary = item.summary + "\n\nДополнительная информация будет добавлена."
+                message = f"✅ Содержание изменено"
+                
+            elif field == "importance":
+                new_importance = int(value)
+                item.importance_level = new_importance
+                message = f"✅ Важность изменена на: {new_importance}/5"
+                
+            elif field == "tags":
+                if value == "f1":
+                    item.tags = ["F1", "Formula 1"]
+                elif value == "race":
+                    item.tags = ["Гонка", "Race"]
+                elif value == "qualifying":
+                    item.tags = ["Квалификация", "Qualifying"]
+                elif value == "stats":
+                    item.tags = ["Статистика", "Statistics"]
+                message = f"✅ Теги изменены на: {', '.join(item.tags)}"
+            else:
+                message = "❌ Неизвестное поле для изменения"
+            
+            # Показываем результат и возвращаемся к редактированию
+            keyboard = [
+                [InlineKeyboardButton("📝 Продолжить редактирование", callback_data=f"edit_{item_id}")],
+                [InlineKeyboardButton("✅ Сохранить", callback_data=f"edit_save_{item_id}")],
+                [InlineKeyboardButton("❌ Отмена", callback_data=f"edit_cancel_{item_id}")]
+            ]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            
+            await query.edit_message_text(message, parse_mode=None, reply_markup=reply_markup)
+            
+        except Exception as e:
+            logger.error(f"Error handling edit set: {e}", exc_info=True)
+            await query.edit_message_text("❌ Ошибка установки значения")
 
     def _format_news_message(self, news_item: ProcessedNewsItem) -> str:
         message = f"🏎️ {news_item.title}\n\n"

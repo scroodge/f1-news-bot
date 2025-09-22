@@ -41,6 +41,15 @@ class ProcessedNewsItem(NewsItem):
     formatted_content: str = ""
     tags: List[str] = Field(default_factory=list)
 
+class PublishedNewsItem(ProcessedNewsItem):
+    """Published news item with publication details"""
+    published_at: datetime = Field(default_factory=datetime.utcnow)
+    published_by: str = "telegram_bot"  # who published it
+    telegram_message_id: Optional[int] = None  # Telegram message ID
+    publication_status: str = "published"  # published, failed, scheduled
+    views_count: int = 0
+    engagement_count: int = 0
+
 class TelegramChannel(BaseModel):
     """Telegram channel configuration"""
     channel_id: str
