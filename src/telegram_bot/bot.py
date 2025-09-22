@@ -140,6 +140,16 @@ class F1NewsBot:
             # Keep whatever is in self.channel_id; publish will surface a clear error
 
     async def start_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        # Проверяем, есть ли deep link для быстрой публикации или просмотра
+        if context.args and context.args[0].startswith('publish_'):
+            item_id = context.args[0].replace('publish_', '')
+            await self._handle_quick_publish(item_id, update)
+            return
+        elif context.args and context.args[0].startswith('view_'):
+            item_id = context.args[0].replace('view_', '')
+            await self._handle_quick_view(item_id, update)
+            return
+        
         welcome_message = (
             "🏎️ F1 News Bot 🏎️\n\n"
             "Добро пожаловать в бота для автоматической публикации F1 новостей!\n\n"
@@ -165,6 +175,99 @@ class F1NewsBot:
         reply_markup = InlineKeyboardMarkup(keyboard)
         
         await update.message.reply_text(welcome_message, parse_mode=None, reply_markup=reply_markup)
+
+    async def _handle_quick_publish(self, item_id: str, update: Update):
+        """Обработка быстрой публикации через deep link"""
+        try:
+            # Находим новость по ID
+            item = next((it for it in self.pending_publications if it.id == item_id), None)
+            if not item:
+                await update.message.reply_text("❌ Новость не найдена в очереди")
+                return
+            
+            # Показываем предварительный просмотр
+            message = f"🚀 **Быстрая публикация:**\n\n"
+            message += f"**Заголовок:** {item.title}\n\n"
+            message += f"**Краткое содержание:**\n{item.summary}\n\n"
+            message += f"**Источник:** {item.source}\n"
+            message += f"**Важность:** {item.importance_level}/5\n\n"
+            message += "Вы хотите опубликовать эту новость?"
+            
+            # Создаем кнопки для подтверждения
+            keyboard = [
+                [
+                    InlineKeyboardButton("✅ Да, опубликовать", callback_data=f"publish_{item_id}"),
+                    InlineKeyboardButton("❌ Отмена", callback_data="menu_start")
+                ],
+                [
+                    InlineKeyboardButton("📝 Редактировать", callback_data=f"edit_{item_id}"),
+                    InlineKeyboardButton("👁️ Подробнее", callback_data=f"view_{item_id}")
+                ]
+            ]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            
+            await update.message.reply_text(message, parse_mode=None, reply_markup=reply_markup)
+            
+        except Exception as e:
+            logger.error(f"Error in quick publish: {e}", exc_info=True)
+            await update.message.reply_text("❌ Ошибка быстрой публикации")
+
+    async def _handle_quick_view(self, item_id: str, update: Update):
+        """Обработка быстрого просмотра через deep link"""
+        try:
+            # Сначала ищем в очереди
+            item = next((it for it in self.pending_publications if it.id == item_id), None)
+            if item:
+                # Новость в очереди
+                message = f"📰 **Детали новости (в очереди):**\n\n"
+                message += f"**Заголовок:** {item.title}\n\n"
+                message += f"**Краткое содержание:**\n{item.summary}\n\n"
+                message += f"**Источник:** {item.source}\n"
+                message += f"**Важность:** {item.importance_level}/5\n\n"
+                message += "Эта новость находится в очереди на публикацию."
+                
+                keyboard = [
+                    [
+                        InlineKeyboardButton("✅ Опубликовать", callback_data=f"publish_{item.id}"),
+                        InlineKeyboardButton("❌ Отклонить", callback_data=f"reject_{item.id}")
+                    ],
+                    [
+                        InlineKeyboardButton("📝 Редактировать", callback_data=f"edit_{item.id}"),
+                        InlineKeyboardButton("📋 К очереди", callback_data="queue_0")
+                    ]
+                ]
+            else:
+                # Ищем в опубликованных
+                try:
+                    published_news = await db_manager.get_published_news(limit=1000, offset=0)
+                    item = next((it for it in published_news if it.id == item_id), None)
+                    if item:
+                        message = f"📰 **Детали опубликованной новости:**\n\n"
+                        message += f"**Заголовок:** {item.title}\n\n"
+                        message += f"**Краткое содержание:**\n{item.summary}\n\n"
+                        message += f"**Источник:** {item.source}\n"
+                        message += f"**Важность:** {item.importance_level}/5\n"
+                        message += f"**Опубликовано:** {item.published_at.strftime('%d.%m.%Y %H:%M')}\n\n"
+                        message += "Эта новость уже была опубликована."
+                        
+                        keyboard = [
+                            [InlineKeyboardButton("📰 К опубликованным", callback_data="published_0")],
+                            [InlineKeyboardButton("🏠 Главное меню", callback_data="menu_start")]
+                        ]
+                    else:
+                        await update.message.reply_text("❌ Новость не найдена")
+                        return
+                except Exception as e:
+                    logger.error(f"Failed to get published news: {e}")
+                    await update.message.reply_text("❌ Новость не найдена")
+                    return
+            
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            await update.message.reply_text(message, parse_mode=None, reply_markup=reply_markup)
+            
+        except Exception as e:
+            logger.error(f"Error in quick view: {e}", exc_info=True)
+            await update.message.reply_text("❌ Ошибка быстрого просмотра")
 
     async def help_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         help_message = (
@@ -266,8 +369,10 @@ class F1NewsBot:
             queue_message = f"📋 Очередь публикаций (стр. {page + 1}/{total_pages}):\n\n"
             
             for i, item in enumerate(self.pending_publications[start_idx:end_idx], start_idx + 1):
+                # Создаем ссылку для быстрой публикации
+                publish_link = f"t.me/{self.bot.username}?start=publish_{item.id}" if self.bot.username else f"t.me/{self.bot.id}?start=publish_{item.id}"
                 queue_message += (
-                    f"{i}. {item.title[:50]}...\n"
+                    f"{i}. <a href='{publish_link}'>{item.title[:50]}...</a>\n"
                     f"   Источник: {item.source}\n"
                     f"   Релевантность: {item.relevance_score:.2f}\n"
                     f"   Важность: {item.importance_level}/5\n\n"
@@ -303,13 +408,13 @@ class F1NewsBot:
             if update.callback_query:
                 await update.callback_query.edit_message_text(
                     queue_message, 
-                    parse_mode=None, 
+                    parse_mode='HTML', 
                     reply_markup=reply_markup
                 )
             else:
                 await update.message.reply_text(
                     queue_message, 
-                    parse_mode=None, 
+                    parse_mode='HTML', 
                     reply_markup=reply_markup
                 )
         except Exception as e:
@@ -462,7 +567,9 @@ class F1NewsBot:
             message = f"📰 Опубликованные новости (стр. {page + 1}/{total_pages}):\n\n"
             
             for i, item in enumerate(published_news, offset + 1):
-                message += f"{i}. {item.title[:50]}...\n"
+                # Создаем ссылку для быстрого просмотра
+                view_link = f"t.me/{self.bot.username}?start=view_{item.id}" if self.bot.username else f"t.me/{self.bot.id}?start=view_{item.id}"
+                message += f"{i}. <a href='{view_link}'>{item.title[:50]}...</a>\n"
                 message += f"   Источник: {item.source}\n"
                 message += f"   Опубликовано: {item.published_at.strftime('%d.%m.%Y %H:%M')}\n"
                 message += f"   Важность: {item.importance_level}/5\n\n"
@@ -497,13 +604,13 @@ class F1NewsBot:
             if update.callback_query:
                 await update.callback_query.edit_message_text(
                     message, 
-                    parse_mode=None, 
+                    parse_mode='HTML', 
                     reply_markup=reply_markup
                 )
             else:
                 await update.message.reply_text(
                     message, 
-                    parse_mode=None, 
+                    parse_mode='HTML', 
                     reply_markup=reply_markup
                 )
         except Exception as e:
@@ -535,6 +642,8 @@ class F1NewsBot:
                 await self._handle_reject(item_id, query)
             elif action == "edit" and item_id:
                 await self._handle_edit(item_id, query)
+            elif action == "view" and item_id:
+                await self._handle_view(item_id, query)
             elif action == "edit_field" and item_id:
                 # Обработка выбора поля для редактирования
                 field = data.split("_")[2] if len(data.split("_")) > 2 else None
@@ -880,6 +989,61 @@ class F1NewsBot:
         except Exception as e:
             logger.error(f"Error handling edit set: {e}", exc_info=True)
             await query.edit_message_text("❌ Ошибка установки значения")
+
+    async def _handle_view(self, item_id: str, query):
+        """Обработка просмотра деталей новости"""
+        try:
+            item = next((it for it in self.pending_publications if it.id == item_id), None)
+            if not item:
+                await query.edit_message_text("❌ Новость не найдена")
+                return
+            
+            # Создаем детальное сообщение
+            message = f"📰 **Детали новости:**\n\n"
+            message += f"**Заголовок:** {item.title}\n\n"
+            
+            if item.summary:
+                message += f"**Краткое содержание:**\n{item.summary}\n\n"
+            
+            if item.key_points:
+                message += "**Ключевые моменты:**\n"
+                for i, point in enumerate(item.key_points, 1):
+                    message += f"{i}. {point}\n"
+                message += "\n"
+            
+            message += f"**Источник:** {item.source}\n"
+            message += f"**URL:** {item.url}\n"
+            message += f"**Релевантность:** {item.relevance_score:.2f}\n"
+            message += f"**Важность:** {item.importance_level}/5\n"
+            message += f"**Настроение:** {item.sentiment}\n"
+            
+            if item.tags:
+                message += f"**Теги:** {', '.join(item.tags)}\n"
+            
+            message += f"**Дата публикации:** {item.published_at}\n"
+            
+            # Создаем кнопки для действий
+            keyboard = [
+                [
+                    InlineKeyboardButton("✅ Опубликовать", callback_data=f"publish_{item.id}"),
+                    InlineKeyboardButton("❌ Отклонить", callback_data=f"reject_{item.id}")
+                ],
+                [
+                    InlineKeyboardButton("📝 Редактировать", callback_data=f"edit_{item.id}"),
+                    InlineKeyboardButton("📋 К очереди", callback_data="queue_0")
+                ]
+            ]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+
+            await query.edit_message_text(
+                message, 
+                parse_mode=None, 
+                reply_markup=reply_markup
+            )
+            
+        except Exception as e:
+            logger.error(f"Error handling view: {e}", exc_info=True)
+            await query.edit_message_text("❌ Ошибка просмотра новости")
 
     def _format_news_message(self, news_item: ProcessedNewsItem) -> str:
         message = f"🏎️ {news_item.title}\n\n"
