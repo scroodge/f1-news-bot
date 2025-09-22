@@ -9,6 +9,7 @@ import logging
 from .ollama_client import OllamaClient
 from ..models import NewsItem, ProcessedNewsItem, ProcessingResult
 from ..database import db_manager
+from ..services.redis_service import redis_service
 
 logger = logging.getLogger(__name__)
 
@@ -65,6 +66,10 @@ class ContentProcessor:
                     news_item.id, 
                     result.news_item
                 )
+                
+                # Add to Redis moderation queue for Telegram bot
+                await redis_service.add_news_to_moderation_queue(result.news_item)
+                
                 logger.info(f"Successfully processed news item: {news_item.title[:50]}...")
             else:
                 logger.error(f"Failed to process news item: {result.error_message}")

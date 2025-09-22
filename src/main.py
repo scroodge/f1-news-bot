@@ -19,7 +19,7 @@ from .collectors.news_collector import NewsCollector
 from .ai.content_processor import ContentProcessor
 from .moderator.content_moderator import ContentModerator
 from .moderator.publication_scheduler import PublicationScheduler
-from .telegram_bot.bot import F1NewsBot
+# Telegram bot removed - now runs as separate process
 from .utils.monitor import system_monitor
 
 # Setup logging
@@ -40,7 +40,7 @@ class F1NewsBotApp:
         self.content_processor = ContentProcessor()
         self.content_moderator = ContentModerator()
         self.publication_scheduler = PublicationScheduler()
-        self.telegram_bot = F1NewsBot()
+        # Telegram bot removed - now runs as separate process
         
         # Background tasks
         self.collection_task: Optional[asyncio.Task] = None
@@ -262,7 +262,8 @@ class F1NewsBotApp:
             
             for news_item in ready_items:
                 try:
-                    result = await self.telegram_bot.publish_to_channel(news_item)
+                    # Telegram bot removed - publication now handled by separate process
+                    result = {"success": False, "error_message": "Publication handled by separate Telegram bot process"}
                     
                     if result.success:
                         await db_manager.mark_as_published(news_item.id)
@@ -283,7 +284,7 @@ class F1NewsBotApp:
             # Initialize components
             db_manager.create_tables()  # Remove await - this is a sync function
             await self.content_processor.initialize()
-            await self.telegram_bot.initialize()
+            # Telegram bot removed - now runs as separate process
             
             # Start background tasks
             self.collection_task = asyncio.create_task(self._collection_loop())
@@ -352,7 +353,7 @@ class F1NewsBotApp:
         
         # Close components
         await self.content_processor.close()
-        await self.telegram_bot.stop()
+        # Telegram bot removed - now runs as separate process
         await self.news_collector.close()
         
         logger.info("Shutdown complete")
