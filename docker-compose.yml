@@ -1,5 +1,5 @@
 services:
-  # Redis Cache (если не установлен локально)
+  # Redis Cache
   redis:
     image: redis:6-alpine
     ports:
@@ -12,8 +12,8 @@ services:
       timeout: 10s
       retries: 3
 
-  # F1 News Bot (Main App + Telegram Bot)
-  f1-news-bot:
+  # F1 News Bot - Main Application
+  f1-news-main:
     build: .
     ports:
       - "8000:8000"
@@ -33,6 +33,30 @@ services:
     restart: unless-stopped
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    command: ["python", "start_local.py"]
+
+  # F1 News Bot - Telegram Bot
+  f1-news-telegram:
+    build: .
+    environment:
+      - DATABASE_URL=postgresql://f1_user:f1_password@host.docker.internal:5432/f1_news
+      - REDIS_URL=redis://redis:6379/0
+      - OLLAMA_BASE_URL=http://host.docker.internal:11434
+      - OLLAMA_MODEL=llama3:latest
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      - TELEGRAM_CHANNEL_ID=${TELEGRAM_CHANNEL_ID}
+      - TELEGRAM_ADMIN_ID=${TELEGRAM_ADMIN_ID}
+    depends_on:
+      redis:
+        condition: service_healthy
+      f1-news-main:
+        condition: service_started
+    volumes:
+      - ./logs:/app/logs
+    restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    command: ["python", "telegram_bot_standalone.py"]
 
 volumes:
   redis_data:

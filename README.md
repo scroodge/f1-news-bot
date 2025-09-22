@@ -51,8 +51,14 @@ docker compose up -d
 ### Управление
 
 ```bash
-# Просмотр логов
-docker compose logs -f f1-news-bot
+# Просмотр логов основного приложения
+docker compose logs -f f1-news-main
+
+# Просмотр логов Telegram бота
+docker compose logs -f f1-news-telegram
+
+# Просмотр всех логов
+docker compose logs -f
 
 # Остановка
 docker compose down
