@@ -9,6 +9,7 @@ import logging
 from telegram import Bot, Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
 from telegram.constants import ParseMode
+from telegram.error import BadRequest, Forbidden
 
 from ..models import ProcessedNewsItem, PublicationResult
 from ..config import settings
@@ -54,6 +55,12 @@ class F1NewsBot:
             # Сносим старый webhook и дропаем висящие апдейты,
             # чтобы polling принимал ВСЕ типы, включая callback_query
             await self.bot.delete_webhook(drop_pending_updates=True)
+
+            # Try to resolve channel id (support @username or numeric id)
+            await self._resolve_channel_id()
+
+            # Diagnostics command
+            self.application.add_handler(CommandHandler("diag", self.diag_command))
 
             logger.info("Telegram bot initialized successfully")
             return True
@@ -101,6 +108,19 @@ class F1NewsBot:
             await self.application.stop()
             await self.application.shutdown()
 
+    async def _resolve_channel_id(self):
+        """Resolve TELEGRAM_CHANNEL_ID to a numeric chat id and verify bot permissions."""
+        try:
+            raw = settings.telegram_channel_id
+            # Prefer resolving via username or raw id
+            chat = await self.bot.get_chat(raw)
+            # For channels the id is negative and usually starts with -100
+            self.channel_id = chat.id
+            logger.info("Resolved channel '%s' -> chat_id=%s", str(raw), str(self.channel_id))
+        except Exception as e:
+            logger.error("Failed to resolve channel id '%s': %s", str(settings.telegram_channel_id), e)
+            # Keep whatever is in self.channel_id; publish will surface a clear error
+
     async def start_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         welcome_message = (
             "🏎️ F1 News Bot 🏎️\n\n"
@@ -116,6 +136,64 @@ class F1NewsBot:
         await update.message.reply_text(welcome_message, parse_mode=None)
 
     async def help_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        help_message = (
+            "📚 Справка по командам:\n\n"
+            "/start - Начать работу с ботом\n"
+            "/help - Показать эту справку\n"
+            "/status - Показать статус системы и статистику\n"
+            "/queue - Показать очередь публикаций\n"
+            "/publish - Опубликовать следующую новость из очереди\n\n"
+            "Как работает бот:\n"
+            "1) Собирает новости из RSS, Telegram каналов, Reddit\n"
+            "2) Обрабатывает контент с помощью Ollama AI\n"
+            "3) Модерирует и фильтрует контент\n"
+            "4) Публикует в ваш канал\n"
+        )
+        await update.message.reply_text(help_message, parse_mode=None)
+
+    async def diag_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Show diagnostics: bot info, channel resolution, admin rights, queue size."""
+        lines = []
+        try:
+            me = await self.bot.get_me()
+            lines.append(f"🤖 Bot: @{me.username} (id: {me.id})")
+        except Exception as e:
+            lines.append(f"🤖 Bot: error getMe(): {e}")
+
+        # Channel resolution
+        raw = settings.telegram_channel_id
+        lines.append(f"📡 Config TELEGRAM_CHANNEL_ID: {raw}")
+        try:
+            chat = await self.bot.get_chat(raw)
+            lines.append(f"➡️ Resolved config to chat_id: {chat.id} | type: {chat.type}")
+        except Exception as e:
+            lines.append(f"❌ Failed to resolve config id: {e}")
+
+        try:
+            # Current effective target
+            chat = await self.bot.get_chat(self.channel_id)
+            lines.append(f"🎯 Effective target chat_id: {chat.id} | title: {getattr(chat, 'title', '')}")
+            # Check admin rights
+            try:
+                admins = await self.bot.get_chat_administrators(chat.id)
+                admin_ids = [a.user.id for a in admins]
+                is_admin = (me.id in admin_ids)
+                lines.append("🛡️ Bot admin in channel: " + ("YES" if is_admin else "NO"))
+            except Forbidden:
+                lines.append("🛡️ Bot admin in channel: NO (Forbidden to list admins)")
+            except Exception as e:
+                lines.append(f"🛡️ Admin check error: {e}")
+        except Exception as e:
+            lines.append(f"🎯 Effective target not reachable: {e}")
+
+        # Queue size
+        try:
+            qsize = len(self.pending_publications)
+            lines.append(f"🧾 Pending queue: {qsize}")
+        except Exception:
+            pass
+
+        await update.message.reply_text("\n".join(lines), disable_web_page_preview=True)
         help_message = (
             "📚 Справка по командам:\n\n"
             "/start - Начать работу с ботом\n"
@@ -341,6 +419,13 @@ class F1NewsBot:
 
     async def publish_to_channel(self, news_item: ProcessedNewsItem) -> PublicationResult:
         try:
+            # Ensure channel id is numeric & resolved
+            try:
+                if isinstance(self.channel_id, str):
+                    # Resolve again in case it changed
+                    await self._resolve_channel_id()
+            except Exception:
+                pass
             message = self._format_news_message(news_item)
             sent = await self.bot.send_message(
                 chat_id=self.channel_id,
@@ -351,6 +436,13 @@ class F1NewsBot:
             await db_manager.mark_as_published(news_item.id)
             await redis_service.mark_news_as_published(news_item.id, sent.message_id)
             return PublicationResult(success=True, message_id=str(sent.message_id))
+        except BadRequest as e:
+            # Typical cause: wrong channel id or bot is not admin in the channel
+            hint = ""
+            if "chat not found" in str(e).lower():
+                hint = " — Проверь TELEGRAM_CHANNEL_ID (используй @username ИЛИ числовой -100XXXXXXXXXX) и права бота (добавь в канал и дай право публиковать)."
+            logger.error(f"Error publishing to channel: {e}")
+            return PublicationResult(success=False, error_message=f"{e}{hint}")
         except Exception as e:
             logger.error(f"Error publishing to channel: {e}", exc_info=True)
             return PublicationResult(success=False, error_message=str(e))

@@ -56,68 +56,52 @@ def check_required_env_vars():
     
     print("✅ Все обязательные переменные окружения настроены и валидны")
 
-async def main():
+def main():
     """Main function"""
     print("🤖 Starting F1 News Telegram Bot...")
     logger.info("Starting F1 News Telegram Bot...")
-    
+
     check_required_env_vars()
-    
+
     # Import here to ensure environment is set up
     from src.telegram_bot.bot import F1NewsBot
     from src.database import db_manager
-    
+
     logger.info("Imports successful")
-    
+
     # Initialize database
     logger.info("Initializing database...")
     db_manager.create_tables()
     logger.info("Database initialized")
-    
+
     # Create and initialize bot
     logger.info("Creating bot instance...")
     bot = F1NewsBot()
-    
+
     try:
         # Initialize bot
         logger.info("Initializing bot...")
-        success = await bot.initialize()
+        success = asyncio.get_event_loop().run_until_complete(bot.initialize())
         if not success:
             logger.error("Failed to initialize Telegram bot")
             print("❌ Failed to initialize Telegram bot")
             return
-        
+
         logger.info("Telegram bot initialized successfully")
         print("✅ Telegram bot started successfully! (polling)")
         print("🛑 Press Ctrl+C to stop the bot")
 
         # Start polling loop (handles commands and callback buttons)
-        await bot.run()
-            
+        asyncio.get_event_loop().run_until_complete(bot.run())
+
     except KeyboardInterrupt:
         logger.info("Received keyboard interrupt, stopping bot...")
         print("\n🛑 Stopping Telegram bot...")
-        await bot.stop()
+        asyncio.get_event_loop().run_until_complete(bot.stop())
         logger.info("Telegram bot stopped")
         print("✅ Telegram bot stopped")
     except Exception as e:
         logger.error(f"Unexpected error: {e}")
         print(f"❌ Error: {e}")
 
-if __name__ == "__main__":
-    # Use a dedicated event loop to avoid 'Cannot close a running event loop' errors
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    try:
-        loop.run_until_complete(main())
-    finally:
-        # Graceful shutdown
-        try:
-            pending = [t for t in asyncio.all_tasks(loop) if not t.done()]
-            for task in pending:
-                task.cancel()
-            if pending:
-                loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
-            loop.run_until_complete(loop.shutdown_asyncgens())
-        finally:
-            loop.close()
+main()
