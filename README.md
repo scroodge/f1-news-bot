@@ -46,6 +46,7 @@ docker compose up -d
 
 - **API**: http://localhost:8000
 - **Документация**: http://localhost:8000/docs
+- **Redis**: localhost:6379
 - **Telegram бот**: Проверьте команды в боте
 
 ### Управление
