@@ -631,6 +631,61 @@ class F1NewsBot:
             logger.info("Button callback received: %s", data)
 
             # Безопасный парсинг: action всегда есть, item_id может отсутствовать
+            # Сначала проверяем специальные случаи
+            if data.startswith("edit_field_"):
+                parts = data.split("_", 2)  # edit, field, ITEM_ID_FIELD
+                logger.info(f"Edit field parts: {parts}")
+                if len(parts) >= 3:
+                    item_id = parts[2].split("_")[0]  # Берем только ID (до следующего _)
+                    field = parts[2].split("_")[1] if len(parts[2].split("_")) > 1 else None
+                    logger.info(f"Parsed edit_field - item_id: {item_id}, field: {field}")
+                    await self._handle_edit_field(item_id, field, query)
+                else:
+                    logger.error(f"Invalid edit_field format: {data}")
+                    await query.edit_message_text("❌ Ошибка парсинга команды редактирования")
+                return
+            elif data.startswith("edit_set_"):
+                parts = data.split("_", 2)  # edit, set, ITEM_ID_FIELD_VALUE
+                if len(parts) >= 3:
+                    remaining = parts[2].split("_")  # ITEM_ID_FIELD_VALUE
+                    if len(remaining) >= 3:
+                        item_id = remaining[0]
+                        field = remaining[1]
+                        value = remaining[2]
+                        await self._handle_edit_set(item_id, field, value, query)
+                    else:
+                        await query.edit_message_text("❌ Ошибка парсинга команды установки значения")
+                else:
+                    await query.edit_message_text("❌ Ошибка парсинга команды установки значения")
+                return
+            elif data.startswith("edit_text_"):
+                parts = data.split("_", 2)  # edit, text, ITEM_ID_FIELD
+                if len(parts) >= 3:
+                    remaining = parts[2].split("_")  # ITEM_ID_FIELD
+                    if len(remaining) >= 2:
+                        item_id = remaining[0]
+                        field = remaining[1]
+                        await self._handle_edit_text(item_id, field, query)
+                    else:
+                        await query.edit_message_text("❌ Ошибка парсинга команды редактирования текста")
+                else:
+                    await query.edit_message_text("❌ Ошибка парсинга команды редактирования текста")
+                return
+            elif data.startswith("copy_text_"):
+                parts = data.split("_", 2)  # copy, text, ITEM_ID_FIELD
+                if len(parts) >= 3:
+                    remaining = parts[2].split("_")  # ITEM_ID_FIELD
+                    if len(remaining) >= 2:
+                        item_id = remaining[0]
+                        field = remaining[1]
+                        await self._handle_copy_text(item_id, field, query)
+                    else:
+                        await query.edit_message_text("❌ Ошибка парсинга команды копирования текста")
+                else:
+                    await query.edit_message_text("❌ Ошибка парсинга команды копирования текста")
+                return
+            
+            # Обычный парсинг для остальных команд
             parts = data.split("_", 1)
             action = parts[0]
             item_id = parts[1] if len(parts) == 2 else None
@@ -644,19 +699,10 @@ class F1NewsBot:
                 await self._handle_edit(item_id, query)
             elif action == "view" and item_id:
                 await self._handle_view(item_id, query)
-            elif action == "edit_field" and item_id:
-                # Обработка выбора поля для редактирования
-                field = data.split("_")[2] if len(data.split("_")) > 2 else None
-                await self._handle_edit_field(item_id, field, query)
             elif action == "edit_save" and item_id:
                 await self._handle_edit_save(item_id, query)
             elif action == "edit_cancel" and item_id:
                 await self._handle_edit_cancel(item_id, query)
-            elif action == "edit_set" and item_id:
-                # Обработка установки значений при редактировании
-                field = data.split("_")[2] if len(data.split("_")) > 2 else None
-                value = data.split("_")[3] if len(data.split("_")) > 3 else None
-                await self._handle_edit_set(item_id, field, value, query)
             elif action == "queue":
                 if item_id == "refresh":
                     # Обновляем очередь
@@ -814,30 +860,35 @@ class F1NewsBot:
     async def _handle_edit_field(self, item_id: str, field: str, query):
         """Обработка выбора поля для редактирования"""
         try:
+            logger.info(f"Looking for item with ID: {item_id}")
+            logger.info(f"Available items: {[item.id for item in self.pending_publications]}")
             item = next((it for it in self.pending_publications if it.id == item_id), None)
             if not item:
+                logger.error(f"Item not found with ID: {item_id}")
                 await query.edit_message_text("❌ Новость не найдена")
                 return
             
             if field == "title":
                 message = f"📝 **Редактирование заголовка:**\n\n"
                 message += f"Текущий заголовок:\n{item.title}\n\n"
-                message += "Выберите новый заголовок:"
+                message += "Выберите действие:"
                 
                 keyboard = [
                     [InlineKeyboardButton("📝 Короткий заголовок", callback_data=f"edit_set_{item_id}_title_short")],
                     [InlineKeyboardButton("📝 Длинный заголовок", callback_data=f"edit_set_{item_id}_title_long")],
+                    [InlineKeyboardButton("✏️ Редактировать вручную", callback_data=f"edit_text_{item_id}_title")],
                     [InlineKeyboardButton("❌ Отмена", callback_data=f"edit_{item_id}")]
                 ]
                 
             elif field == "summary":
                 message = f"📄 **Редактирование содержания:**\n\n"
                 message += f"Текущее содержание:\n{item.summary}\n\n"
-                message += "Выберите новое содержание:"
+                message += "Выберите действие:"
                 
                 keyboard = [
                     [InlineKeyboardButton("📄 Краткое содержание", callback_data=f"edit_set_{item_id}_summary_short")],
                     [InlineKeyboardButton("📄 Подробное содержание", callback_data=f"edit_set_{item_id}_summary_long")],
+                    [InlineKeyboardButton("✏️ Редактировать вручную", callback_data=f"edit_text_{item_id}_summary")],
                     [InlineKeyboardButton("❌ Отмена", callback_data=f"edit_{item_id}")]
                 ]
                 
@@ -989,6 +1040,78 @@ class F1NewsBot:
         except Exception as e:
             logger.error(f"Error handling edit set: {e}", exc_info=True)
             await query.edit_message_text("❌ Ошибка установки значения")
+
+    async def _handle_edit_text(self, item_id: str, field: str, query):
+        """Обработка ручного редактирования текста"""
+        try:
+            item = next((it for it in self.pending_publications if it.id == item_id), None)
+            if not item:
+                await query.edit_message_text("❌ Новость не найдена")
+                return
+            
+            # Показываем текущий текст и инструкции
+            if field == "title":
+                current_text = item.title
+                field_name = "заголовок"
+            elif field == "summary":
+                current_text = item.summary
+                field_name = "содержание"
+            else:
+                await query.edit_message_text("❌ Неизвестное поле для редактирования")
+                return
+            
+            message = f"✏️ **Редактирование {field_name}:**\n\n"
+            message += f"Текущий {field_name}:\n{current_text}\n\n"
+            message += "Для изменения отправьте новое значение в следующем сообщении.\n"
+            message += "Или используйте кнопки ниже:"
+            
+            keyboard = [
+                [InlineKeyboardButton("📋 Скопировать текущий текст", callback_data=f"copy_text_{item_id}_{field}")],
+                [InlineKeyboardButton("🔄 Обновить", callback_data=f"edit_text_{item_id}_{field}")],
+                [InlineKeyboardButton("❌ Отмена", callback_data=f"edit_{item_id}")]
+            ]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            
+            await query.edit_message_text(message, parse_mode=None, reply_markup=reply_markup)
+            
+        except Exception as e:
+            logger.error(f"Error handling edit text: {e}", exc_info=True)
+            await query.edit_message_text("❌ Ошибка редактирования текста")
+
+    async def _handle_copy_text(self, item_id: str, field: str, query):
+        """Обработка копирования текста для редактирования"""
+        try:
+            item = next((it for it in self.pending_publications if it.id == item_id), None)
+            if not item:
+                await query.edit_message_text("❌ Новость не найдена")
+                return
+            
+            # Получаем текст для копирования
+            if field == "title":
+                text_to_copy = item.title
+                field_name = "заголовок"
+            elif field == "summary":
+                text_to_copy = item.summary
+                field_name = "содержание"
+            else:
+                await query.edit_message_text("❌ Неизвестное поле для копирования")
+                return
+            
+            message = f"📋 **Текст {field_name} для редактирования:**\n\n"
+            message += f"```\n{text_to_copy}\n```\n\n"
+            message += "Скопируйте текст выше, отредактируйте его и отправьте новое значение в следующем сообщении."
+            
+            keyboard = [
+                [InlineKeyboardButton("✏️ Редактировать снова", callback_data=f"edit_text_{item_id}_{field}")],
+                [InlineKeyboardButton("❌ Отмена", callback_data=f"edit_{item_id}")]
+            ]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            
+            await query.edit_message_text(message, parse_mode='Markdown', reply_markup=reply_markup)
+            
+        except Exception as e:
+            logger.error(f"Error handling copy text: {e}", exc_info=True)
+            await query.edit_message_text("❌ Ошибка копирования текста")
 
     async def _handle_view(self, item_id: str, query):
         """Обработка просмотра деталей новости"""
