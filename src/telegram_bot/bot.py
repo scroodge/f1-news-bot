@@ -23,6 +23,7 @@ class F1NewsBot:
         self.application: Optional[Application] = None
         self.channel_id = settings.telegram_channel_id
         self.pending_publications: List[ProcessedNewsItem] = []
+        self.published_count: int = 0  # Счетчик опубликованных новостей
         self._stop_event: asyncio.Event | None = None
 
     async def initialize(self) -> bool:
@@ -152,20 +153,36 @@ class F1NewsBot:
 
     async def status_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         try:
+            # Получаем реальную статистику
+            queue_count = len(self.pending_publications)
+            
+            # Подсчитываем статистику по новостям в очереди
+            total_news = queue_count + self.published_count
+            processed_news = queue_count + self.published_count  # Все новости в очереди уже обработаны
+            published_news = self.published_count  # Реальный счетчик опубликованных
+            
+            # Определяем статус системы
+            system_status = "🟢 Активна" if queue_count > 0 else "🟡 Ожидание новостей"
+            
             status_message = (
                 "📊 Статус системы:\n\n"
-                "🟢 Сборщик новостей: Активен\n"
-                "🟢 AI обработка: Активна\n"
-                "🟢 Модерация: Активна\n"
-                "🟢 Публикация: Активна\n\n"
+                f"🟢 Сборщик новостей: {system_status}\n"
+                f"🟢 AI обработка: {system_status}\n"
+                f"🟢 Модерация: {system_status}\n"
+                f"🟢 Публикация: {system_status}\n\n"
                 "📈 Статистика:\n"
-                "• Новостей собрано: 0\n"
-                "• Новостей обработано: 0\n"
-                "• Новостей опубликовано: 0\n"
-                "• В очереди: 0\n\n"
+                f"• Новостей собрано: {total_news}\n"
+                f"• Новостей обработано: {processed_news}\n"
+                f"• Новостей опубликовано: {published_news}\n"
+                f"• В очереди: {queue_count}\n\n"
                 "⏰ Последнее обновление: Сейчас"
             )
-            await update.message.reply_text(status_message, parse_mode=None)
+            
+            # Создаем кнопку обновления
+            keyboard = [[InlineKeyboardButton("🔄 Обновить", callback_data="status_refresh")]]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            
+            await update.message.reply_text(status_message, parse_mode=None, reply_markup=reply_markup)
         except Exception as e:
             logger.error(f"Error in status command: {e}")
             await update.message.reply_text("❌ Ошибка получения статуса")
@@ -381,6 +398,10 @@ class F1NewsBot:
                 else:
                     # Переходим на страницу
                     await self.queue_command(update, context)
+            elif action == "status":
+                if item_id == "refresh":
+                    # Обновляем статус
+                    await self.status_command(update, context)
             else:
                 logger.warning("Unknown action or missing item_id: %s", data)
                 await query.edit_message_text("❌ Неизвестная команда")
@@ -399,8 +420,9 @@ class F1NewsBot:
                 return
             result = await self.publish_to_channel(item)
             if result.success:
-                # удаляем опубликованный
+                # удаляем опубликованный и увеличиваем счетчик
                 self.pending_publications = [it for it in self.pending_publications if it.id != item_id]
+                self.published_count += 1
                 await query.edit_message_text("✅ Новость успешно опубликована!")
             else:
                 await query.edit_message_text(f"❌ Ошибка публикации: {result.error_message}")
