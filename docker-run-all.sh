@@ -36,7 +36,7 @@ mkdir -p logs
 
 # Запускаем всю систему
 echo "🚀 Запуск F1 News Bot (Main App + Telegram Bot)..."
-docker-compose up -d
+docker compose up -d
 
 # Ждем запуска
 echo "⏳ Ожидание запуска системы..."
@@ -49,10 +49,10 @@ echo "📚 API документация: http://localhost:8000/docs"
 echo "🤖 Telegram бот: Проверьте бота в Telegram"
 echo ""
 echo "📊 Статус контейнеров:"
-docker-compose ps
+docker compose ps
 echo ""
 echo "📋 Логи системы:"
-echo "docker-compose logs -f f1-news-bot"
+echo "docker compose logs -f f1-news-bot"
 echo ""
 echo "🛑 Остановка системы:"
-echo "docker-compose down"
+echo "docker compose down"

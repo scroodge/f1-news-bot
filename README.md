@@ -39,7 +39,7 @@ cp config.env.example .env
 
 ```bash
 # Запуск всей системы (Main App + Telegram Bot)
-docker-compose up -d
+docker compose up -d
 ```
 
 ### Проверка работы
@@ -52,10 +52,10 @@ docker-compose up -d
 
 ```bash
 # Просмотр логов
-docker-compose logs -f f1-news-bot
+docker compose logs -f f1-news-bot
 
 # Остановка
-docker-compose down
+docker compose down
 ```
 
 ## Архитектура
