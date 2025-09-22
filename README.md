@@ -18,6 +18,51 @@
 - [**Usage Guide**](USAGE_GUIDE.md) - Руководство пользователя
 - [**Setup Guide**](SETUP_GIT.md) - Инструкции по настройке
 
+## 🐳 Docker запуск (Рекомендуется)
+
+### Быстрый старт
+
+```bash
+# 1. Клонирование
+git clone https://github.com/yourusername/f1-news-bot.git
+cd f1-news-bot
+
+# 2. Настройка
+cp config.env.example .env
+# Отредактируйте .env с вашими настройками
+
+# 3. Запуск всей системы
+./docker-run-all.sh
+```
+
+### Пошаговый запуск
+
+```bash
+# 1. Основное приложение
+docker-compose up -d
+
+# 2. Telegram бот (отдельно)
+docker-compose -f docker-compose-bot.yml up -d
+```
+
+### Проверка работы
+
+- **API**: http://localhost:8000
+- **Документация**: http://localhost:8000/docs
+- **Telegram бот**: Проверьте команды в боте
+
+### Управление
+
+```bash
+# Просмотр логов
+docker-compose logs -f f1-news-bot
+docker-compose -f docker-compose-bot.yml logs -f f1-news-bot-telegram
+
+# Остановка
+docker-compose down
+docker-compose -f docker-compose-bot.yml down
+```
+
 ## Архитектура
 
 ```

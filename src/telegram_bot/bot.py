@@ -2,14 +2,11 @@
 Telegram Bot for publishing F1 news
 """
 import asyncio
-from typing import List, Optional, Dict, Any
-from datetime import datetime
+from typing import List, Optional
 import logging
 
 from telegram import Bot, Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
-from telegram.constants import ParseMode
-from telegram.error import BadRequest, Forbidden
 
 from ..models import ProcessedNewsItem, PublicationResult
 from ..config import settings
@@ -49,8 +46,6 @@ class F1NewsBot:
             self.application.add_handler(CommandHandler("status", self.status_command))
             self.application.add_handler(CommandHandler("queue", self.queue_command))
             self.application.add_handler(CommandHandler("publish", self.publish_command))
-            self.application.add_handler(CommandHandler("test", self.test_command))
-            self.application.add_handler(CommandHandler("ping", self.ping_command))
 
             # Сносим старый webhook и дропаем висящие апдейты,
             # чтобы polling принимал ВСЕ типы, включая callback_query
@@ -58,9 +53,6 @@ class F1NewsBot:
 
             # Try to resolve channel id (support @username or numeric id)
             await self._resolve_channel_id()
-
-            # Diagnostics command
-            self.application.add_handler(CommandHandler("diag", self.diag_command))
 
             logger.info("Telegram bot initialized successfully")
             return True
@@ -151,63 +143,6 @@ class F1NewsBot:
         )
         await update.message.reply_text(help_message, parse_mode=None)
 
-    async def diag_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Show diagnostics: bot info, channel resolution, admin rights, queue size."""
-        lines = []
-        try:
-            me = await self.bot.get_me()
-            lines.append(f"🤖 Bot: @{me.username} (id: {me.id})")
-        except Exception as e:
-            lines.append(f"🤖 Bot: error getMe(): {e}")
-
-        # Channel resolution
-        raw = settings.telegram_channel_id
-        lines.append(f"📡 Config TELEGRAM_CHANNEL_ID: {raw}")
-        try:
-            chat = await self.bot.get_chat(raw)
-            lines.append(f"➡️ Resolved config to chat_id: {chat.id} | type: {chat.type}")
-        except Exception as e:
-            lines.append(f"❌ Failed to resolve config id: {e}")
-
-        try:
-            # Current effective target
-            chat = await self.bot.get_chat(self.channel_id)
-            lines.append(f"🎯 Effective target chat_id: {chat.id} | title: {getattr(chat, 'title', '')}")
-            # Check admin rights
-            try:
-                admins = await self.bot.get_chat_administrators(chat.id)
-                admin_ids = [a.user.id for a in admins]
-                is_admin = (me.id in admin_ids)
-                lines.append("🛡️ Bot admin in channel: " + ("YES" if is_admin else "NO"))
-            except Forbidden:
-                lines.append("🛡️ Bot admin in channel: NO (Forbidden to list admins)")
-            except Exception as e:
-                lines.append(f"🛡️ Admin check error: {e}")
-        except Exception as e:
-            lines.append(f"🎯 Effective target not reachable: {e}")
-
-        # Queue size
-        try:
-            qsize = len(self.pending_publications)
-            lines.append(f"🧾 Pending queue: {qsize}")
-        except Exception:
-            pass
-
-        await update.message.reply_text("\n".join(lines), disable_web_page_preview=True)
-        help_message = (
-            "📚 Справка по командам:\n\n"
-            "/start - Начать работу с ботом\n"
-            "/help - Показать эту справку\n"
-            "/status - Показать статус системы и статистику\n"
-            "/queue - Показать очередь публикаций\n"
-            "/publish - Опубликовать следующую новость из очереди\n\n"
-            "Как работает бот:\n"
-            "1) Собирает новости из RSS, Telegram каналов, Reddit\n"
-            "2) Обрабатывает контент с помощью Ollama AI\n"
-            "3) Модерирует и фильтрует контент\n"
-            "4) Публикует в ваш канал\n"
-        )
-        await update.message.reply_text(help_message, parse_mode=None)
 
     async def status_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         try:
@@ -283,51 +218,6 @@ class F1NewsBot:
             logger.error(f"Error in publish command: {e}")
             await update.message.reply_text("❌ Ошибка публикации")
 
-    async def test_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        try:
-            keyboard = [[
-                InlineKeyboardButton("✅ Test Publish", callback_data="publish_test123"),
-                InlineKeyboardButton("❌ Test Reject", callback_data="reject_test123")
-            ]]
-            reply_markup = InlineKeyboardMarkup(keyboard)
-            logger.info("Created test keyboard with buttons: publish_test123, reject_test123")
-            await update.message.reply_text("🧪 Test buttons - click them to see if they work:", reply_markup=reply_markup)
-        except Exception as e:
-            logger.error(f"Error in test command: {e}")
-            await update.message.reply_text("❌ Ошибка теста")
-
-    async def debug_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        try:
-            keyboard = [[
-                InlineKeyboardButton("🔍 Debug 1", callback_data="debug_1"),
-                InlineKeyboardButton("🔍 Debug 2", callback_data="debug_2")
-            ]]
-            reply_markup = InlineKeyboardMarkup(keyboard)
-            logger.info("Created debug keyboard with buttons: debug_1, debug_2")
-            await update.message.reply_text("🔍 Debug buttons - click them to see if they work:", reply_markup=reply_markup)
-        except Exception as e:
-            logger.error(f"Error in debug command: {e}")
-            await update.message.reply_text("❌ Ошибка отладки")
-
-    async def simple_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        try:
-            keyboard = [[InlineKeyboardButton("OK", callback_data="ok")]]
-            reply_markup = InlineKeyboardMarkup(keyboard)
-            logger.info("Created simple keyboard with button: ok")
-            await update.message.reply_text("Simple button test:", reply_markup=reply_markup)
-        except Exception as e:
-            logger.error(f"Error in simple command: {e}")
-            await update.message.reply_text("❌ Ошибка простого теста")
-
-    async def ping_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        try:
-            keyboard = [[InlineKeyboardButton("Pong!", callback_data="pong")]]
-            reply_markup = InlineKeyboardMarkup(keyboard)
-            logger.info("Created ping keyboard with button: pong")
-            await update.message.reply_text("Ping! Click the button:", reply_markup=reply_markup)
-        except Exception as e:
-            logger.error(f"Error in ping command: {e}")
-            await update.message.reply_text("❌ Ошибка ping")
 
     async def button_callback(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         """Единая обработка callback_query с безопасным парсингом данных"""
@@ -345,23 +235,11 @@ class F1NewsBot:
             logger.info("Parsed action='%s', item_id='%s'", action, item_id)
 
             if action == "publish" and item_id:
-                if item_id == "test123":
-                    await query.edit_message_text("✅ Test publish button works!")
-                else:
-                    await self._handle_publish(item_id, query)
+                await self._handle_publish(item_id, query)
             elif action == "reject" and item_id:
-                if item_id == "test123":
-                    await query.edit_message_text("❌ Test reject button works!")
-                else:
-                    await self._handle_reject(item_id, query)
+                await self._handle_reject(item_id, query)
             elif action == "edit" and item_id:
                 await self._handle_edit(item_id, query)
-            elif action == "debug":
-                await query.edit_message_text(f"🔍 Debug button {item_id or ''} works!")
-            elif action == "ok":
-                await query.edit_message_text("✅ Simple button works!")
-            elif action == "pong":
-                await query.edit_message_text("🏓 Pong! Button works!")
             else:
                 logger.warning("Unknown action or missing item_id: %s", data)
                 await query.edit_message_text("❌ Неизвестная команда")
@@ -464,39 +342,6 @@ class F1NewsBot:
                 logger.error(f"Error in Redis sync loop: {e}", exc_info=True)
                 await asyncio.sleep(60)
 
-    async def _send_next_item_for_moderation(self, context):
-        if not self.pending_publications:
-            return
-        item = self.pending_publications[0]
-        keyboard = [[
-            InlineKeyboardButton("✅ Одобрить", callback_data=f"approve_{item.id}"),
-            InlineKeyboardButton("❌ Отклонить", callback_data=f"reject_{item.id}")
-        ]]
-        reply_markup = InlineKeyboardMarkup(keyboard)
-
-        key_points_text = "\n".join([f"- {p}" for p in (item.key_points or [])]) or "Нет"
-        tags_text = ", ".join(item.tags) if item.tags else "Нет"
-
-        message_text = (
-            f"Новая новость для модерации:\n\n"
-            f"{item.title}\n\n"
-            f"{item.summary or ''}\n\n"
-            f"Ключевые моменты:\n{key_points_text}\n\n"
-            f"Настроение: {item.sentiment}\n"
-            f"Важность: {item.importance_level}/5\n"
-            f"Теги: {tags_text}\n\n"
-            f"Читать оригинал: {item.url}"
-        )
-        try:
-            await self.bot.send_message(
-                chat_id=settings.telegram_admin_id,
-                text=message_text,
-                reply_markup=reply_markup,
-                parse_mode=None
-            )
-            logger.info("Sent news item %s for moderation to admin %s", item.id, settings.telegram_admin_id)
-        except Exception as e:
-            logger.error(f"Error sending news for moderation: {e}", exc_info=True)
 
     async def stop(self):
         """

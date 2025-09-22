@@ -12,7 +12,7 @@ services:
       timeout: 10s
       retries: 3
 
-  # F1 News Bot API (подключается к локальным сервисам)
+  # F1 News Bot API
   f1-news-bot:
     build: .
     ports:
@@ -21,7 +21,10 @@ services:
       - DATABASE_URL=postgresql://f1_user:f1_password@host.docker.internal:5432/f1_news
       - REDIS_URL=redis://redis:6379/0
       - OLLAMA_BASE_URL=http://host.docker.internal:11434
-      - OLLAMA_MODEL=llama2
+      - OLLAMA_MODEL=llama3:latest
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      - TELEGRAM_CHANNEL_ID=${TELEGRAM_CHANNEL_ID}
+      - TELEGRAM_ADMIN_ID=${TELEGRAM_ADMIN_ID}
     depends_on:
       redis:
         condition: service_healthy
