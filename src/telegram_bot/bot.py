@@ -790,8 +790,8 @@ class F1NewsBot:
                 await self._handle_edit_cancel(item_id, query)
             elif action == "queue":
                 if item_id == "refresh":
-                    # Обновляем очередь
-                    await self.queue_command(update, context)
+                    # Обновляем очередь с проверкой изменений
+                    await self._handle_queue_refresh(query)
                 else:
                     # Переходим на страницу
                     await self.queue_command(update, context)
@@ -1413,6 +1413,45 @@ class F1NewsBot:
         except Exception as e:
             logger.error(f"Error cancelling delete all: {e}")
             await query.edit_message_text("❌ Ошибка отмены")
+
+    async def _sync_with_redis(self):
+        """Синхронизировать с Redis для получения новых новостей"""
+        try:
+            redis_news = await redis_service.get_news_from_moderation_queue(limit=10)
+            for news_item in redis_news:
+                if not any(item.id == news_item.id for item in self.pending_publications):
+                    self.pending_publications.insert(0, news_item)  # Добавляем в начало списка
+                    logger.info("Added news to moderation queue from Redis: %s...", news_item.title[:50])
+        except Exception as e:
+            logger.error(f"Error syncing with Redis: {e}")
+
+    async def _handle_queue_refresh(self, query):
+        """Обновить очередь с проверкой изменений"""
+        try:
+            # Получаем текущее количество новостей
+            current_count = len(self.pending_publications)
+            
+            # Синхронизируем с Redis
+            await self._sync_with_redis()
+            
+            # Проверяем, изменилось ли что-то
+            new_count = len(self.pending_publications)
+            
+            if new_count != current_count:
+                # Есть изменения - обновляем сообщение
+                await self.queue_command(query, None)
+            else:
+                # Нет изменений - показываем сообщение об этом
+                await query.edit_message_text(
+                    "🔄 Очередь обновлена\n\nНовых новостей не найдено",
+                    reply_markup=InlineKeyboardMarkup([[
+                        InlineKeyboardButton("📋 К очереди", callback_data="queue_0")
+                    ]])
+                )
+                
+        except Exception as e:
+            logger.error(f"Error in queue refresh: {e}")
+            await query.edit_message_text("❌ Ошибка обновления очереди")
 
     async def _handle_queue_delete_menu(self, query):
         """Показать меню удаления новостей из очереди"""
