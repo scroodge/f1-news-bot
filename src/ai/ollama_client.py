@@ -38,8 +38,13 @@ class OllamaClient:
             if not self.session:
                 await self.initialize()
             
-            # Create processing prompt
-            prompt = self._create_processing_prompt(news_item)
+            # Check if translation is needed
+            translated_title, translated_content = await self._translate_if_needed(
+                news_item.title, news_item.content
+            )
+            
+            # Create processing prompt with translated content
+            prompt = self._create_processing_prompt(news_item, translated_title, translated_content)
             
             # Call Ollama API
             response = await self._call_ollama(prompt)
@@ -48,9 +53,20 @@ class OllamaClient:
                 # Parse response
                 processed_data = self._parse_ollama_response(response)
                 
-                # Create processed news item
+                # Create processed news item with translated content
                 processed_item = ProcessedNewsItem(
-                    **news_item.dict(),
+                    id=news_item.id,
+                    title=translated_title,  # Use translated title
+                    content=translated_content,  # Use translated content
+                    url=news_item.url,
+                    source=news_item.source,
+                    source_type=news_item.source_type,
+                    published_at=news_item.published_at,
+                    relevance_score=news_item.relevance_score,
+                    keywords=news_item.keywords,
+                    processed=True,
+                    published=False,
+                    created_at=datetime.utcnow(),
                     summary=processed_data.get('summary', ''),
                     key_points=processed_data.get('key_points', []),
                     sentiment=processed_data.get('sentiment', 'neutral'),
@@ -79,28 +95,99 @@ class OllamaClient:
                 error_message=str(e)
             )
     
-    def _create_processing_prompt(self, news_item: NewsItem) -> str:
-        """Create prompt for Ollama processing"""
-        prompt = f"""
-Analyze this F1 news article and provide a structured response in JSON format.
+    def _detect_language(self, text: str) -> str:
+        """Detect if text is in Russian or other language"""
+        # Simple heuristic: check for Cyrillic characters
+        cyrillic_chars = sum(1 for char in text if '\u0400' <= char <= '\u04FF')
+        total_chars = len([char for char in text if char.isalpha()])
+        
+        if total_chars == 0:
+            return "unknown"
+        
+        cyrillic_ratio = cyrillic_chars / total_chars
+        return "russian" if cyrillic_ratio > 0.3 else "other"
+    
+    async def _translate_if_needed(self, title: str, content: str) -> tuple:
+        """Translate title and content to Russian if needed"""
+        # Check if title is in Russian
+        title_lang = self._detect_language(title)
+        content_lang = self._detect_language(content)
+        
+        logger.info(f"Language detection - Title: {title_lang}, Content: {content_lang}")
+        
+        translated_title = title
+        translated_content = content
+        
+        # Translate title if not Russian
+        if title_lang != "russian":
+            logger.info(f"Translating title from {title_lang} to Russian")
+            translated_title = await self._translate_text(title)
+            logger.info(f"Title translation result: {translated_title[:50]}...")
+        else:
+            logger.info("Title is already in Russian, skipping translation")
+        
+        # Translate content if not Russian
+        if content_lang != "russian":
+            logger.info(f"Translating content from {content_lang} to Russian")
+            translated_content = await self._translate_text(content)
+            logger.info(f"Content translation result: {translated_content[:50]}...")
+        else:
+            logger.info("Content is already in Russian, skipping translation")
+        
+        return translated_title, translated_content
+    
+    async def _translate_text(self, text: str) -> str:
+        """Translate text to Russian using Ollama"""
+        try:
+            prompt = f"""Переведи следующий текст на русский язык. Сохрани структуру и форматирование. Если текст уже на русском, верни его без изменений.
 
-Title: {news_item.title}
-Content: {news_item.content}
-Source: {news_item.source}
+Текст для перевода:
+{text}
+
+Перевод:"""
+            
+            logger.info(f"Translating text: {text[:50]}...")
+            response = await self._call_ollama(prompt)
+            logger.info(f"Translation response: {response}")
+            
+            if response:
+                translated = response.strip()
+                logger.info(f"Translated result: {translated}")
+                return translated
+            else:
+                logger.warning("No translation response received, returning original text")
+                return text
+            
+        except Exception as e:
+            logger.error(f"Error translating text: {e}")
+            return text  # Return original text if translation fails
+    
+    def _create_processing_prompt(self, news_item: NewsItem, title: str = None, content: str = None) -> str:
+        """Create prompt for Ollama processing"""
+        # Use translated content if provided, otherwise use original
+        final_title = title if title else news_item.title
+        final_content = content if content else news_item.content
+        
+        prompt = f"""
+Проанализируй эту новость о Формуле 1 и предоставь структурированный ответ в формате JSON.
+
+Заголовок: {final_title}
+Содержание: {final_content}
+Источник: {news_item.source}
 URL: {news_item.url}
 
-Please provide the following information in JSON format:
+Пожалуйста, предоставь следующую информацию в формате JSON:
 
-1. summary: A concise 2-3 sentence summary of the article
-2. key_points: Array of 3-5 key points from the article
-3. sentiment: One of "positive", "negative", or "neutral"
-4. importance_level: Integer from 1-5 (1=low, 5=high importance)
-5. formatted_content: A well-formatted version for social media with emojis and hashtags
-6. tags: Array of relevant tags (e.g., ["F1", "Hamilton", "Mercedes", "Race"])
+1. summary: Краткое изложение статьи в 2-3 предложениях
+2. key_points: Массив из 3-5 ключевых моментов статьи
+3. sentiment: Одно из "positive", "negative", или "neutral"
+4. importance_level: Целое число от 1-5 (1=низкая, 5=высокая важность)
+5. formatted_content: Хорошо отформатированная версия для социальных сетей с эмодзи и хештегами
+6. tags: Массив релевантных тегов (например, ["F1", "Хэмилтон", "Мерседес", "Гонка"])
 
-Focus on F1-specific content and make it engaging for social media.
+Сосредоточься на контенте, связанном с F1, и сделай его привлекательным для социальных сетей.
 
-Response format (JSON only):
+Формат ответа (только JSON):
 {{
     "summary": "...",
     "key_points": ["...", "..."],

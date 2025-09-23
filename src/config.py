@@ -61,7 +61,12 @@ class Settings(BaseSettings):
     @property
     def rss_feeds(self) -> List[str]:
         """Parse RSS feeds from comma-separated string"""
-        if self.rss_feeds_raw:
+        # Try to get from environment variable directly
+        import os
+        env_feeds = os.environ.get('RSS_FEEDS', '')
+        if env_feeds:
+            return parse_comma_separated_list(env_feeds)
+        elif self.rss_feeds_raw:
             return parse_comma_separated_list(self.rss_feeds_raw)
         return parse_comma_separated_list(self.rss_feeds_str)
     

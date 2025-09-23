@@ -122,6 +122,11 @@ class DatabaseManager:
             if not db_item:
                 return False
             
+            # Update translated content
+            db_item.title = processed_item.title
+            db_item.content = processed_item.content
+            
+            # Update processed fields
             db_item.summary = processed_item.summary
             db_item.key_points = processed_item.key_points
             db_item.sentiment = processed_item.sentiment

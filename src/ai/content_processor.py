@@ -33,6 +33,35 @@ class ContentProcessor:
         logger.info("Content processor initialized successfully")
         return True
     
+    def _detect_language(self, text: str) -> str:
+        """Detect if text is in Russian or other language"""
+        # Simple heuristic: check for Cyrillic characters
+        cyrillic_chars = sum(1 for char in text if '\u0400' <= char <= '\u04FF')
+        total_chars = len([char for char in text if char.isalpha()])
+        
+        if total_chars == 0:
+            return "unknown"
+        
+        cyrillic_ratio = cyrillic_chars / total_chars
+        return "russian" if cyrillic_ratio > 0.3 else "other"
+    
+    async def _translate_to_russian(self, text: str) -> str:
+        """Translate text to Russian using Ollama"""
+        try:
+            prompt = f"""Переведи следующий текст на русский язык. Сохрани структуру и форматирование. Если текст уже на русском, верни его без изменений.
+
+Текст для перевода:
+{text}
+
+Перевод:"""
+            
+            response = await self.ollama_client.generate_response(prompt)
+            return response.strip()
+            
+        except Exception as e:
+            logger.error(f"Error translating text: {e}")
+            return text  # Return original text if translation fails
+    
     async def process_news_batch(self, news_items: List[NewsItem]) -> List[ProcessingResult]:
         """Process a batch of news items"""
         results = []
