@@ -405,6 +405,7 @@ class F1NewsBot:
 
             # Кнопки управления
             keyboard.append([InlineKeyboardButton("🔄 Обновить", callback_data="queue_refresh")])
+            keyboard.append([InlineKeyboardButton("🗑️ Удалить новости", callback_data="queue_delete_menu")])
             keyboard.append([InlineKeyboardButton("🏠 Главное меню", callback_data="menu_start")])
 
             reply_markup = InlineKeyboardMarkup(keyboard) if keyboard else None
@@ -713,7 +714,10 @@ class F1NewsBot:
 
             # Безопасный парсинг: action всегда есть, item_id может отсутствовать
             # Сначала проверяем специальные случаи
-            if data.startswith("edit_field_"):
+            if data == "queue_delete_menu":
+                await self._handle_queue_delete_menu(query)
+                return
+            elif data.startswith("edit_field_"):
                 parts = data.split("_", 2)  # edit, field, ITEM_ID_FIELD
                 logger.info(f"Edit field parts: {parts}")
                 if len(parts) >= 3:
@@ -846,6 +850,15 @@ class F1NewsBot:
                     reply_markup = InlineKeyboardMarkup(keyboard)
                     
                     await query.edit_message_text(welcome_message, parse_mode=None, reply_markup=reply_markup)
+            elif data.startswith("delete_item_"):
+                item_id = data.replace("delete_item_", "")
+                await self._handle_delete_item(item_id, query)
+            elif data == "delete_all_confirm":
+                await self._handle_delete_all_confirm(query)
+            elif data == "delete_all_yes":
+                await self._handle_delete_all_yes(query)
+            elif data == "delete_all_no":
+                await self._handle_delete_all_no(query)
             else:
                 logger.warning("Unknown action or missing item_id: %s", data)
                 await query.edit_message_text("❌ Неизвестная команда")
@@ -1225,8 +1238,8 @@ class F1NewsBot:
                 message += "**Ключевые моменты:**\n"
                 for i, point in enumerate(item.key_points, 1):
                     message += f"{i}. {point}\n"
-                message += "\n"
-            
+            message += "\n"
+        
             message += f"**Источник:** {item.source}\n"
             message += f"**URL:** {item.url}\n"
             message += f"**Релевантность:** {item.relevance_score:.2f}\n"
@@ -1318,13 +1331,120 @@ class F1NewsBot:
                 redis_news = await redis_service.get_news_from_moderation_queue(limit=5)
                 for news_item in redis_news:
                     if not any(item.id == news_item.id for item in self.pending_publications):
-                        self.pending_publications.append(news_item)
+                        self.pending_publications.insert(0, news_item)  # Добавляем в начало списка
                         logger.info("Added news to moderation queue from Redis: %s...", news_item.title[:50])
                 await asyncio.sleep(30)
             except Exception as e:
                 logger.error(f"Error in Redis sync loop: {e}", exc_info=True)
                 await asyncio.sleep(60)
 
+    
+    async def _handle_delete_item(self, item_id: str, query):
+        """Удалить конкретную новость из очереди"""
+        try:
+            # Находим и удаляем новость
+            item_to_remove = None
+            for item in self.pending_publications:
+                if item.id == item_id:
+                    item_to_remove = item
+                    break
+            
+            if item_to_remove:
+                self.pending_publications.remove(item_to_remove)
+                await query.edit_message_text(
+                    f"✅ Новость удалена из очереди:\n\n{item_to_remove.title[:100]}...",
+                    reply_markup=InlineKeyboardMarkup([[
+                        InlineKeyboardButton("📋 К очереди", callback_data="queue_0")
+                    ]])
+                )
+            else:
+                await query.edit_message_text("❌ Новость не найдена")
+            
+        except Exception as e:
+            logger.error(f"Error deleting item: {e}")
+            await query.edit_message_text("❌ Ошибка удаления новости")
+
+    async def _handle_delete_all_confirm(self, query):
+        """Показать подтверждение удаления всех новостей"""
+        try:
+            count = len(self.pending_publications)
+            message = f"⚠️ ВНИМАНИЕ!\n\nВы собираетесь удалить ВСЕ {count} новостей из очереди.\n\nЭто действие нельзя отменить!\n\nПродолжить?"
+            
+            keyboard = [
+                [
+                    InlineKeyboardButton("✅ Да, удалить все", callback_data="delete_all_yes"),
+                    InlineKeyboardButton("❌ Отмена", callback_data="delete_all_no")
+                ]
+            ]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            
+            await query.edit_message_text(message, reply_markup=reply_markup)
+            
+        except Exception as e:
+            logger.error(f"Error in delete all confirm: {e}")
+            await query.edit_message_text("❌ Ошибка подтверждения")
+
+    async def _handle_delete_all_yes(self, query):
+        """Удалить все новости из очереди"""
+        try:
+            count = len(self.pending_publications)
+            self.pending_publications.clear()
+            
+            await query.edit_message_text(
+                f"✅ Удалено {count} новостей из очереди",
+                reply_markup=InlineKeyboardMarkup([[
+                    InlineKeyboardButton("📋 К очереди", callback_data="queue_0")
+                ]])
+            )
+            
+        except Exception as e:
+            logger.error(f"Error deleting all items: {e}")
+            await query.edit_message_text("❌ Ошибка удаления всех новостей")
+
+    async def _handle_delete_all_no(self, query):
+        """Отменить удаление всех новостей"""
+        try:
+            await query.edit_message_text(
+                "❌ Удаление отменено",
+                reply_markup=InlineKeyboardMarkup([[
+                    InlineKeyboardButton("📋 К очереди", callback_data="queue_0")
+                ]])
+            )
+        except Exception as e:
+            logger.error(f"Error cancelling delete all: {e}")
+            await query.edit_message_text("❌ Ошибка отмены")
+
+    async def _handle_queue_delete_menu(self, query):
+        """Показать меню удаления новостей из очереди"""
+        try:
+            if not self.pending_publications:
+                await query.edit_message_text("📭 Очередь пуста - нечего удалять")
+                return
+            
+            # Показываем первые 10 новостей с кнопками удаления
+            items_per_page = 10
+            items_to_show = self.pending_publications[:items_per_page]
+            
+            message = "🗑️ Выберите новости для удаления:\n\n"
+            
+            keyboard = []
+            for i, item in enumerate(items_to_show, 1):
+                message += f"{i}. {item.title[:60]}...\n"
+                keyboard.append([InlineKeyboardButton(
+                    f"🗑️ Удалить {i}", 
+                    callback_data=f"delete_item_{item.id}"
+                )])
+            
+            # Кнопки управления
+            keyboard.append([InlineKeyboardButton("❌ Отмена", callback_data="queue_0")])
+            keyboard.append([InlineKeyboardButton("🗑️ Удалить все", callback_data="delete_all_confirm")])
+            
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            await query.edit_message_text(message, reply_markup=reply_markup)
+            
+        except Exception as e:
+            logger.error(f"Error in queue delete menu: {e}")
+            await query.edit_message_text("❌ Ошибка отображения меню удаления")
     
     async def stop(self):
         """
