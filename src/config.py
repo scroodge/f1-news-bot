@@ -25,6 +25,11 @@ class Settings(BaseSettings):
     telegram_channel_id: str = Field(default="", env="TELEGRAM_CHANNEL_ID")
     telegram_admin_id: str = Field(default="", env="TELEGRAM_ADMIN_ID")
     
+    # Telegram API Configuration (for channel monitoring)
+    telegram_api_id: str = Field(default="", env="TELEGRAM_API_ID")
+    telegram_api_hash: str = Field(default="", env="TELEGRAM_API_HASH")
+    telegram_phone: str = Field(default="", env="TELEGRAM_PHONE")
+    
     # Database Configuration
     database_url: str = Field(
         default="postgresql://f1_user:f1_password@localhost:5432/f1_news",

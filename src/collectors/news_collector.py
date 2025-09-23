@@ -62,6 +62,11 @@ class NewsCollector:
     async def _collect_from_source(self, source_name: str, collector: BaseCollector) -> List[NewsItem]:
         """Collect news from a specific source"""
         try:
+            # Initialize collector if needed
+            if hasattr(collector, 'initialize') and not hasattr(collector, '_initialized'):
+                await collector.initialize()
+                collector._initialized = True
+            
             news_items = await collector.collect_news()
             
             # Save to database
