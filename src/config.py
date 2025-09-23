@@ -73,7 +73,12 @@ class Settings(BaseSettings):
     @property
     def telegram_channels(self) -> List[str]:
         """Parse Telegram channels from comma-separated string"""
-        if self.telegram_channels_raw:
+        # Try to get from environment variable directly
+        import os
+        env_channels = os.environ.get('TELEGRAM_CHANNELS', '')
+        if env_channels:
+            return parse_comma_separated_list(env_channels)
+        elif self.telegram_channels_raw:
             return parse_comma_separated_list(self.telegram_channels_raw)
         return []
     
