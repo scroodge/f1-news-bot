@@ -53,11 +53,11 @@ class OllamaClient:
                 # Parse response
                 processed_data = self._parse_ollama_response(response)
                 
-                # Create processed news item with translated content
+                # Create processed news item with original content and translations
                 processed_item = ProcessedNewsItem(
                     id=news_item.id,
-                    title=translated_title,  # Use translated title
-                    content=translated_content,  # Use translated content
+                    title=news_item.title,  # Keep original title
+                    content=news_item.content,  # Keep original content
                     url=news_item.url,
                     source=news_item.source,
                     source_type=news_item.source_type,
@@ -72,7 +72,12 @@ class OllamaClient:
                     sentiment=processed_data.get('sentiment', 'neutral'),
                     importance_level=processed_data.get('importance_level', 1),
                     formatted_content=processed_data.get('formatted_content', ''),
-                    tags=processed_data.get('tags', [])
+                    tags=processed_data.get('tags', []),
+                    # Translation fields
+                    translated_title=translated_title,
+                    translated_summary=processed_data.get('summary', ''),
+                    translated_key_points=processed_data.get('key_points', []),
+                    original_language=self._detect_language(news_item.title)
                 )
                 
                 processing_time = (datetime.utcnow() - start_time).total_seconds()

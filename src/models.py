@@ -40,6 +40,11 @@ class ProcessedNewsItem(NewsItem):
     importance_level: int = 1  # 1-5 scale
     formatted_content: str = ""
     tags: List[str] = Field(default_factory=list)
+    # Translated content fields
+    translated_title: Optional[str] = None
+    translated_summary: Optional[str] = None
+    translated_key_points: List[str] = Field(default_factory=list)
+    original_language: Optional[str] = None
 
 class PublishedNewsItem(ProcessedNewsItem):
     """Published news item with publication details"""

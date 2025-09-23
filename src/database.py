@@ -47,6 +47,12 @@ class NewsItemDB(Base):
     importance_level = Column(Integer, default=1)
     formatted_content = Column(Text, nullable=True)
     tags = Column(JSON, default=list)
+    
+    # Translated content fields
+    translated_title = Column(Text, nullable=True)
+    translated_summary = Column(Text, nullable=True)
+    translated_key_points = Column(JSON, default=list)
+    original_language = Column(String, nullable=True)
 
 class PublishedNewsItemDB(Base):
     """Published news item database model"""
@@ -72,6 +78,12 @@ class PublishedNewsItemDB(Base):
     importance_level = Column(Integer, default=1)
     formatted_content = Column(Text, nullable=True)
     tags = Column(JSON, default=list)
+    
+    # Translated content fields
+    translated_title = Column(Text, nullable=True)
+    translated_summary = Column(Text, nullable=True)
+    translated_key_points = Column(JSON, default=list)
+    original_language = Column(String, nullable=True)
     
     # Publication fields
     published_by = Column(String, default="telegram_bot")
@@ -122,7 +134,7 @@ class DatabaseManager:
             if not db_item:
                 return False
             
-            # Update translated content
+            # Update original content
             db_item.title = processed_item.title
             db_item.content = processed_item.content
             
@@ -133,6 +145,13 @@ class DatabaseManager:
             db_item.importance_level = processed_item.importance_level
             db_item.formatted_content = processed_item.formatted_content
             db_item.tags = processed_item.tags
+            
+            # Update translated content fields
+            db_item.translated_title = processed_item.translated_title
+            db_item.translated_summary = processed_item.translated_summary
+            db_item.translated_key_points = processed_item.translated_key_points
+            db_item.original_language = processed_item.original_language
+            
             db_item.processed = True
             
             session.commit()
@@ -270,6 +289,10 @@ class DatabaseManager:
                 importance_level=news_item.importance_level,
                 formatted_content=news_item.formatted_content,
                 tags=news_item.tags or [],
+                translated_title=news_item.translated_title,
+                translated_summary=news_item.translated_summary,
+                translated_key_points=news_item.translated_key_points or [],
+                original_language=news_item.original_language,
                 published_by="telegram_bot",
                 telegram_message_id=telegram_message_id,
                 publication_status="published",
@@ -334,6 +357,28 @@ class DatabaseManager:
                 "today_published": today_published,
                 "this_week_published": this_week_published
             }
+    
+    async def delete_news_item(self, news_id: str) -> bool:
+        """Delete news item from database"""
+        try:
+            with self.get_session() as session:
+                # Delete from news_items table
+                news_item = session.query(NewsItemDB).filter(NewsItemDB.id == news_id).first()
+                if news_item:
+                    session.delete(news_item)
+                
+                # Delete from published_news table if exists
+                published_item = session.query(PublishedNewsItemDB).filter(PublishedNewsItemDB.news_id == news_id).first()
+                if published_item:
+                    session.delete(published_item)
+                
+                session.commit()
+                logger.info(f"Deleted news item from database: {news_id}")
+                return True
+                
+        except Exception as e:
+            logger.error(f"Error deleting news item from database: {e}")
+            return False
 
 # Global database manager instance
 db_manager = DatabaseManager()

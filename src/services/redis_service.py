@@ -45,6 +45,10 @@ class RedisService:
                 "importance_level": news_item.importance_level,
                 "formatted_content": news_item.formatted_content,
                 "tags": news_item.tags,
+                "translated_title": news_item.translated_title,
+                "translated_summary": news_item.translated_summary,
+                "translated_key_points": news_item.translated_key_points,
+                "original_language": news_item.original_language,
                 "added_to_queue_at": datetime.utcnow().isoformat()
             }
             
@@ -91,7 +95,11 @@ class RedisService:
                         sentiment=news_data["sentiment"],
                         importance_level=news_data["importance_level"],
                         formatted_content=news_data["formatted_content"],
-                        tags=news_data["tags"]
+                        tags=news_data["tags"],
+                        translated_title=news_data.get("translated_title"),
+                        translated_summary=news_data.get("translated_summary"),
+                        translated_key_points=news_data.get("translated_key_points", []),
+                        original_language=news_data.get("original_language")
                     )
                     
                     news_items.append(news_item)

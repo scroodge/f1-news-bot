@@ -8,7 +8,7 @@ import logging
 from telegram import Bot, Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, MessageHandler, filters, ContextTypes
 
-from ..models import ProcessedNewsItem, PublicationResult
+from ..models import ProcessedNewsItem, PublicationResult, SourceType
 from ..config import settings
 from ..services.redis_service import redis_service
 from ..database import db_manager
@@ -491,14 +491,22 @@ class F1NewsBot:
             
             # Создаем детальное сообщение
             message = f"📰 **Детали новости #{item_number}:**\n\n"
-            message += f"**Заголовок:** {item.title}\n\n"
             
-            if item.summary:
+            # Используем переведенный заголовок, если доступен
+            display_title = item.translated_title if item.translated_title else item.title
+            message += f"**Заголовок:** {display_title}\n\n"
+            
+            # Используем переведенное содержание, если доступно
+            if item.translated_summary:
+                message += f"**Краткое содержание:**\n{item.translated_summary}\n\n"
+            elif item.summary:
                 message += f"**Краткое содержание:**\n{item.summary}\n\n"
             
-            if item.key_points:
+            # Используем переведенные ключевые моменты, если доступны
+            key_points_to_show = item.translated_key_points if item.translated_key_points else item.key_points
+            if key_points_to_show:
                 message += "**Ключевые моменты:**\n"
-                for i, point in enumerate(item.key_points, 1):
+                for i, point in enumerate(key_points_to_show, 1):
                     message += f"{i}. {point}\n"
                 message += "\n"
             
@@ -798,7 +806,7 @@ class F1NewsBot:
             elif action == "status":
                 if item_id == "refresh":
                     # Обновляем статус
-                    await self.status_command(update, context)
+                    await self._handle_status_refresh(query)
             elif action == "published":
                 if item_id == "refresh":
                     # Обновляем опубликованные новости
@@ -1350,9 +1358,25 @@ class F1NewsBot:
                     break
             
             if item_to_remove:
+                # Удаляем из локальной очереди
                 self.pending_publications.remove(item_to_remove)
+                
+                # Удаляем из Redis
+                try:
+                    await redis_service.remove_news_from_moderation_queue(item_id)
+                    logger.info(f"Removed news {item_id} from Redis moderation queue")
+                except Exception as e:
+                    logger.error(f"Error removing news from Redis: {e}")
+                
+                # Удаляем из базы данных
+                try:
+                    await db_manager.delete_news_item(item_id)
+                    logger.info(f"Deleted news {item_id} from database")
+                except Exception as e:
+                    logger.error(f"Error deleting news from database: {e}")
+                
                 await query.edit_message_text(
-                    f"✅ Новость удалена из очереди:\n\n{item_to_remove.title[:100]}...",
+                    f"✅ Новость удалена из очереди, Redis и базы данных:\n\n{item_to_remove.title[:100]}...",
                     reply_markup=InlineKeyboardMarkup([[
                         InlineKeyboardButton("📋 К очереди", callback_data="queue_0")
                     ]])
@@ -1388,10 +1412,29 @@ class F1NewsBot:
         """Удалить все новости из очереди"""
         try:
             count = len(self.pending_publications)
+            item_ids = [item.id for item in self.pending_publications]
+            
+            # Очищаем локальную очередь
             self.pending_publications.clear()
             
+            # Удаляем из Redis
+            try:
+                for item_id in item_ids:
+                    await redis_service.remove_news_from_moderation_queue(item_id)
+                logger.info(f"Removed {count} news items from Redis moderation queue")
+            except Exception as e:
+                logger.error(f"Error removing news from Redis: {e}")
+            
+            # Удаляем из базы данных
+            try:
+                for item_id in item_ids:
+                    await db_manager.delete_news_item(item_id)
+                logger.info(f"Deleted {count} news items from database")
+            except Exception as e:
+                logger.error(f"Error deleting news from database: {e}")
+            
             await query.edit_message_text(
-                f"✅ Удалено {count} новостей из очереди",
+                f"✅ Удалено {count} новостей из очереди, Redis и базы данных",
                 reply_markup=InlineKeyboardMarkup([[
                     InlineKeyboardButton("📋 К очереди", callback_data="queue_0")
                 ]])
@@ -1417,29 +1460,144 @@ class F1NewsBot:
     async def _sync_with_redis(self):
         """Синхронизировать с Redis для получения новых новостей"""
         try:
-            redis_news = await redis_service.get_news_from_moderation_queue(limit=10)
+            # Получаем только новые новости из Redis (те, которых нет в текущей очереди)
+            redis_news = await redis_service.get_news_from_moderation_queue(limit=50)
+            current_ids = {item.id for item in self.pending_publications}
+            
+            new_items = []
             for news_item in redis_news:
-                if not any(item.id == news_item.id for item in self.pending_publications):
-                    self.pending_publications.insert(0, news_item)  # Добавляем в начало списка
+                if news_item.id not in current_ids:
+                    new_items.append(news_item)
                     logger.info("Added news to moderation queue from Redis: %s...", news_item.title[:50])
+            
+            # Добавляем новые новости в начало списка
+            if new_items:
+                self.pending_publications = new_items + self.pending_publications
+                
         except Exception as e:
             logger.error(f"Error syncing with Redis: {e}")
+
+    async def _show_queue_page(self, query, page: int = 0):
+        """Показать страницу очереди"""
+        try:
+            if not self.pending_publications:
+                await query.edit_message_text("📭 Очередь публикаций пуста")
+                return
+
+            items_per_page = 4
+            total_items = len(self.pending_publications)
+            total_pages = (total_items + items_per_page - 1) // items_per_page
+            page = max(0, min(page, total_pages - 1))
+            
+            start_idx = page * items_per_page
+            end_idx = min(start_idx + items_per_page, total_items)
+            page_items = self.pending_publications[start_idx:end_idx]
+
+            queue_message = f"📋 **Очередь публикаций (стр. {page + 1}/{total_pages}):**\n\n"
+            
+            for i, item in enumerate(page_items, 1):
+                item_num = start_idx + i
+                title = item.title[:50] + "..." if len(item.title) > 50 else item.title
+                source = f"Telegram: {item.source}" if item.source_type == SourceType.TELEGRAM else item.source
+                
+                # Создаем ссылку для быстрой публикации
+                deep_link = f"http://t.me/{self.bot.username}?start=publish_{item.id}"
+                
+                queue_message += f"{item_num}. **{title}**\n"
+                queue_message += f"   Источник: {source}\n"
+                queue_message += f"   Релевантность: {item.relevance_score:.2f}\n"
+                queue_message += f"   Важность: {item.importance_level}/5\n\n"
+
+            keyboard = []
+            
+            # Кнопки пагинации
+            if total_pages > 1:
+                page_buttons = []
+                start_page = max(0, page - 2)
+                end_page = min(total_pages, page + 3)
+                
+                for p in range(start_page, end_page):
+                    if p == page:
+                        page_buttons.append(InlineKeyboardButton(f"•{p+1}•", callback_data=f"queue_{p}"))
+                    else:
+                        page_buttons.append(InlineKeyboardButton(f"{p+1}", callback_data=f"queue_{p}"))
+                if page_buttons:
+                    keyboard.append(page_buttons)
+
+            # Кнопки управления
+            keyboard.append([InlineKeyboardButton("🔄 Обновить", callback_data="queue_refresh")])
+            keyboard.append([InlineKeyboardButton("🗑️ Удалить новости", callback_data="queue_delete_menu")])
+            keyboard.append([InlineKeyboardButton("🏠 Главное меню", callback_data="menu_start")])
+
+            reply_markup = InlineKeyboardMarkup(keyboard) if keyboard else None
+
+            await query.edit_message_text(
+                queue_message, 
+                parse_mode='HTML', 
+                reply_markup=reply_markup
+            )
+        except Exception as e:
+            logger.error(f"Error in show queue page: {e}")
+            await query.edit_message_text("❌ Ошибка получения очереди")
+
+    async def _handle_status_refresh(self, query):
+        """Обновить статус с проверкой изменений"""
+        try:
+            # Получаем статистику из базы данных
+            published_stats = await db_manager.get_published_stats()
+            queue_count = len(self.pending_publications)
+            
+            # Формируем сообщение статуса
+            status_message = f"📊 **Статус системы:**\n\n"
+            status_message += f"🟢 Сборщик новостей: 🟢 Активна\n"
+            status_message += f"🟢 AI обработка: 🟢 Активна\n"
+            status_message += f"🟢 Модерация: 🟢 Активна\n"
+            status_message += f"🟢 Публикация: 🟢 Активна\n\n"
+            
+            status_message += f"📈 **Статистика:**\n"
+            status_message += f"• Новостей собрано: {published_stats.get('total_news', 0) + queue_count}\n"
+            status_message += f"• Новостей обработано: {published_stats.get('total_news', 0) + queue_count}\n"
+            status_message += f"• Новостей опубликовано: {published_stats.get('published_news', 0)}\n"
+            status_message += f"• В очереди: {queue_count}\n\n"
+            
+            status_message += f"📅 **Публикации:**\n"
+            status_message += f"• Сегодня: {published_stats.get('today_published', 0)}\n"
+            status_message += f"• За неделю: {published_stats.get('this_week_published', 0)}\n\n"
+            
+            status_message += f"⏰ Последнее обновление: Сейчас"
+            
+            # Кнопки
+            keyboard = [
+                [InlineKeyboardButton("🔄 Обновить", callback_data="status_refresh")],
+                [InlineKeyboardButton("🏠 Главное меню", callback_data="menu_start")]
+            ]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            
+            await query.edit_message_text(
+                status_message, 
+                parse_mode=None, 
+                reply_markup=reply_markup
+            )
+                
+        except Exception as e:
+            logger.error(f"Error in status refresh: {e}")
+            await query.edit_message_text("❌ Ошибка обновления статуса")
 
     async def _handle_queue_refresh(self, query):
         """Обновить очередь с проверкой изменений"""
         try:
-            # Получаем текущее количество новостей
-            current_count = len(self.pending_publications)
+            # Получаем текущие ID новостей
+            current_ids = {item.id for item in self.pending_publications}
             
             # Синхронизируем с Redis
             await self._sync_with_redis()
             
             # Проверяем, изменилось ли что-то
-            new_count = len(self.pending_publications)
+            new_ids = {item.id for item in self.pending_publications}
             
-            if new_count != current_count:
-                # Есть изменения - обновляем сообщение
-                await self.queue_command(query, None)
+            if new_ids != current_ids:
+                # Есть изменения - показываем обновленную очередь
+                await self._show_queue_page(query, page=0)
             else:
                 # Нет изменений - показываем сообщение об этом
                 await query.edit_message_text(
