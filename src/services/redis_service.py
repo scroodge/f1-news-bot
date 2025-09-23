@@ -49,6 +49,9 @@ class RedisService:
                 "translated_summary": news_item.translated_summary,
                 "translated_key_points": news_item.translated_key_points,
                 "original_language": news_item.original_language,
+                "image_url": news_item.image_url,
+                "video_url": news_item.video_url,
+                "media_type": news_item.media_type,
                 "added_to_queue_at": datetime.utcnow().isoformat()
             }
             
@@ -99,7 +102,10 @@ class RedisService:
                         translated_title=news_data.get("translated_title"),
                         translated_summary=news_data.get("translated_summary"),
                         translated_key_points=news_data.get("translated_key_points", []),
-                        original_language=news_data.get("original_language")
+                        original_language=news_data.get("original_language"),
+                        image_url=news_data.get("image_url"),
+                        video_url=news_data.get("video_url"),
+                        media_type=news_data.get("media_type")
                     )
                     
                     news_items.append(news_item)

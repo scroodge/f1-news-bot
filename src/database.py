@@ -40,6 +40,11 @@ class NewsItemDB(Base):
     published = Column(Boolean, default=False)
     created_at = Column(DateTime, default=datetime.utcnow)
     
+    # Media fields
+    image_url = Column(String, nullable=True)
+    video_url = Column(String, nullable=True)
+    media_type = Column(String, nullable=True)
+    
     # Processed fields
     summary = Column(Text, nullable=True)
     key_points = Column(JSON, default=list)
@@ -70,6 +75,11 @@ class PublishedNewsItemDB(Base):
     processed = Column(Boolean, default=True)
     published = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
+    
+    # Media fields
+    image_url = Column(String, nullable=True)
+    video_url = Column(String, nullable=True)
+    media_type = Column(String, nullable=True)
     
     # Processed fields
     summary = Column(Text, nullable=True)
@@ -121,7 +131,10 @@ class DatabaseManager:
                 relevance_score=news_item.relevance_score,
                 keywords=news_item.keywords,
                 processed=news_item.processed,
-                published=news_item.published
+                published=news_item.published,
+                image_url=news_item.image_url,
+                video_url=news_item.video_url,
+                media_type=news_item.media_type
             )
             session.add(db_item)
             session.commit()
@@ -137,6 +150,11 @@ class DatabaseManager:
             # Update original content
             db_item.title = processed_item.title
             db_item.content = processed_item.content
+            
+            # Update media fields
+            db_item.image_url = processed_item.image_url
+            db_item.video_url = processed_item.video_url
+            db_item.media_type = processed_item.media_type
             
             # Update processed fields
             db_item.summary = processed_item.summary
@@ -283,6 +301,9 @@ class DatabaseManager:
                 processed=True,
                 published=True,
                 created_at=news_item.created_at,
+                image_url=news_item.image_url,
+                video_url=news_item.video_url,
+                media_type=news_item.media_type,
                 summary=news_item.summary,
                 key_points=news_item.key_points or [],
                 sentiment=news_item.sentiment,

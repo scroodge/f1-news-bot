@@ -160,6 +160,29 @@ class TelegramCollector(BaseCollector):
             channel_username = channel.replace('@', '') if channel.startswith('@') else channel
             url = f"https://t.me/{channel_username}/{message.id}"
             
+            # Extract media information
+            image_url = None
+            video_url = None
+            media_type = None
+            
+            if message.photo:
+                # Get the largest photo size (skip PhotoStrippedSize objects)
+                photo_sizes = [s for s in message.photo.sizes if hasattr(s, 'w') and hasattr(s, 'h')]
+                if photo_sizes:
+                    largest_photo = max(photo_sizes, key=lambda s: s.w * s.h)
+                image_url = f"https://t.me/{channel_username}/{message.id}?single"
+                media_type = "photo"
+            elif message.video:
+                video_url = f"https://t.me/{channel_username}/{message.id}?single"
+                media_type = "video"
+            elif message.document:
+                if message.document.mime_type and message.document.mime_type.startswith('image/'):
+                    image_url = f"https://t.me/{channel_username}/{message.id}?single"
+                    media_type = "photo"
+                elif message.document.mime_type and message.document.mime_type.startswith('video/'):
+                    video_url = f"https://t.me/{channel_username}/{message.id}?single"
+                    media_type = "video"
+            
             # Create news item
             news_item = NewsItem(
                 title=title,
@@ -167,7 +190,10 @@ class TelegramCollector(BaseCollector):
                 url=url,
                 source=f"Telegram: {channel}",
                 source_type=SourceType.TELEGRAM,
-                published_at=message.date.replace(tzinfo=None) if message.date else datetime.utcnow()
+                published_at=message.date.replace(tzinfo=None) if message.date else datetime.utcnow(),
+                image_url=image_url,
+                video_url=video_url,
+                media_type=media_type
             )
             
             # Calculate relevance score and extract keywords

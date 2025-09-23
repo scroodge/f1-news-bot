@@ -28,6 +28,10 @@ class NewsItem(BaseModel):
     processed: bool = False
     published: bool = False
     created_at: datetime = Field(default_factory=datetime.utcnow)
+    # Media fields
+    image_url: Optional[str] = None
+    video_url: Optional[str] = None
+    media_type: Optional[str] = None  # photo, video, document
     
     class Config:
         use_enum_values = False
