@@ -28,28 +28,24 @@ def setup_telegram_api():
         print("\n📱 Starting authentication...")
         client.start(phone=phone)
         
-        # Check if user is authorized (async method)
+        # Check if user is authorized (sync method)
         if not client.is_user_authorized():
             print("❌ Authentication failed!")
             return False
         
         print("✅ Authentication successful!")
         
-        # Test channel access (async methods)
+        # Test channel access (simplified)
         print("\n🔍 Testing channel access...")
         test_channels = ["@first_places", "@f1kekw"]
         
-        async def test_channels_async():
-            for channel in test_channels:
-                try:
-                    entity = await client.get_entity(channel)
-                    print(f"✅ Can access {channel}: {entity.title}")
-                except Exception as e:
-                    print(f"❌ Cannot access {channel}: {e}")
-        
-        # Run async test
-        import asyncio
-        asyncio.run(test_channels_async())
+        for channel in test_channels:
+            try:
+                # Use sync method for testing
+                entity = client.get_entity(channel)
+                print(f"✅ Can access {channel}: {entity.title}")
+            except Exception as e:
+                print(f"❌ Cannot access {channel}: {e}")
         
         client.disconnect()
         
