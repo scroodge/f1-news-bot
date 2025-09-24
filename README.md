@@ -2,6 +2,39 @@
 
 Автоматический сервис для сбора, обработки и публикации новостей Formula 1 в Telegram канал.
 
+## 📋 Требования
+
+- **Python 3.11+** (рекомендуется 3.11)
+- **PostgreSQL 12+**
+- **Redis 6+**
+- **Ollama** (для AI обработки)
+- **Telegram Bot Token** (от @BotFather)
+
+### Установка Python 3.11
+
+Если у вас нет Python 3.11, используйте один из способов:
+
+**С pyenv (рекомендуется):**
+```bash
+# Установка pyenv
+curl https://pyenv.run | bash
+
+# Установка Python 3.11
+pyenv install 3.11.0
+pyenv local 3.11.0  # для этого проекта
+```
+
+**С Homebrew (macOS):**
+```bash
+brew install python@3.11
+```
+
+**С apt (Ubuntu/Debian):**
+```bash
+sudo apt update
+sudo apt install python3.11 python3.11-venv python3.11-dev
+```
+
 ## Возможности
 
 - 🔍 **Сбор новостей** из множества источников (RSS, Telegram, Reddit, Twitter)
@@ -86,6 +119,27 @@ docker compose down
 - **Теги**: Извлечение из заголовка и содержания
 - **Summary**: Использование оригинального текста для русских новостей
 
+## 🔧 Решение проблем с зависимостями
+
+Если при запуске возникают ошибки типа `No module named 'async_timeout'`:
+
+```bash
+# 1. Убедитесь что используете Python 3.11+
+python3 --version
+
+# 2. Пересоздайте виртуальное окружение
+rm -rf venv
+python3 -m venv venv
+source venv/bin/activate
+
+# 3. Обновите pip и установите зависимости
+pip install --upgrade pip setuptools wheel
+pip install -r requirements.txt
+
+# 4. Проверьте установку
+python -c "import async_timeout, aiohttp, fastapi; print('OK')"
+```
+
 ## 🚀 Быстрый запуск
 
 ### Способ 1: Локальная разработка (рекомендуется)
@@ -94,9 +148,19 @@ docker compose down
 # Клонирование и настройка
 git clone <your-repo-url>
 cd TG_BOT_F1
-python3 -m venv venv
+
+# Проверка версии Python (должна быть 3.11+)
+python3 --version  # или python3.11 --version
+
+# Создание виртуального окружения (требуется Python 3.11+)
+python3.11 -m venv venv  # или python3 -m venv venv если Python 3.11 по умолчанию
 source venv/bin/activate  # На Windows: venv\Scripts\activate
+pip install --upgrade pip setuptools wheel
 pip install -r requirements.txt
+
+# Или используйте автоматический скрипт:
+# chmod +x install_dependencies.sh
+# ./install_dependencies.sh
 
 # Настройка окружения
 cp .env.example .env
@@ -145,8 +209,8 @@ nano .env  # Отредактируйте с вашими данными
 # OLLAMA_BASE_URL=http://localhost:11434
 # (n8n уже запущен локально)
 
-# Установка Python зависимостей
-python3 -m venv venv
+# Установка Python зависимостей (требуется Python 3.11+)
+python3.11 -m venv venv  # или python3.11 -m venv venv  # или python3 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
 
@@ -232,7 +296,7 @@ cd f1-news-bot
 # Или ручной запуск:
 # cp config.env.example .env
 # nano .env  # Настройте с вашими данными
-# python3 -m venv venv
+# python3.11 -m venv venv  # или python3 -m venv venv
 # source venv/bin/activate
 # pip install -r requirements.txt
 # python run.py
@@ -258,7 +322,7 @@ git clone https://github.com/YOUR_USERNAME/f1-news-bot.git
 cd f1-news-bot
 
 # Создание виртуального окружения
-python -m venv venv
+python3.11 -m venv venv  # или python3.11 -m venv venv  # или python3 -m venv venv
 source venv/bin/activate  # macOS/Linux
 # или venv\Scripts\activate  # Windows
 
@@ -410,7 +474,7 @@ n8n start
 sudo apt install screen -y
 
 # Создание виртуального окружения
-python3 -m venv venv
+python3.11 -m venv venv  # или python3 -m venv venv
 
 
 # Установка зависимостей
@@ -432,7 +496,7 @@ source venv/bin/activate
 **Для macOS:**
 ```bash
 # Создание виртуального окружения
-python3 -m venv venv
+python3.11 -m venv venv  # или python3 -m venv venv
 source venv/bin/activate
 
 # Установка зависимостей
