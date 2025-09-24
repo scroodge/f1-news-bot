@@ -86,8 +86,18 @@ class ContentProcessor:
     async def process_single_news(self, news_item: NewsItem) -> ProcessingResult:
         """Process a single news item"""
         try:
-            # Process with Ollama
-            result = await self.ollama_client.process_news_item(news_item)
+            # Check if news is in Russian
+            title_lang = self._detect_language(news_item.title)
+            content_lang = self._detect_language(news_item.content)
+            
+            if title_lang == "russian" and content_lang == "russian":
+                # Fast processing for Russian news (skip Ollama)
+                logger.info(f"Fast processing Russian news: {news_item.title[:50]}...")
+                result = self._process_russian_news_fast(news_item)
+            else:
+                # Full processing with Ollama for non-Russian news
+                logger.info(f"Full processing with Ollama: {news_item.title[:50]}...")
+                result = await self.ollama_client.process_news_item(news_item)
             
             if result.success and result.news_item:
                 # Save processed item to database
@@ -107,6 +117,51 @@ class ContentProcessor:
             
         except Exception as e:
             logger.error(f"Error processing news item: {e}")
+            return ProcessingResult(
+                success=False,
+                error_message=str(e)
+            )
+    
+    def _process_russian_news_fast(self, news_item: NewsItem) -> ProcessingResult:
+        """Fast processing for Russian news without Ollama"""
+        try:
+            # Use OllamaClient's fast processing method
+            processed_data = self.ollama_client.process_russian_news_fast(news_item)
+            
+            # Create ProcessedNewsItem
+            processed_news = ProcessedNewsItem(
+                id=news_item.id,
+                title=news_item.title,
+                content=news_item.content,
+                url=news_item.url,
+                source=news_item.source,
+                source_type=news_item.source_type,
+                published_at=news_item.published_at,
+                created_at=news_item.created_at,
+                summary=processed_data["summary"],
+                key_points=processed_data["key_points"],
+                sentiment=processed_data["sentiment"],
+                importance_level=processed_data["importance_level"],
+                formatted_content=processed_data["formatted_content"],
+                tags=processed_data["tags"],
+                relevance_score=processed_data["relevance_score"],
+                translated_title=processed_data["translated_title"],
+                translated_content=processed_data["translated_content"],
+                translated_summary=processed_data["translated_summary"],
+                translated_key_points=processed_data["translated_key_points"],
+                translated_formatted_content=processed_data["translated_formatted_content"],
+                image_url=news_item.image_url,
+                video_url=news_item.video_url,
+                processed_at=datetime.now()
+            )
+            
+            return ProcessingResult(
+                success=True,
+                news_item=processed_news
+            )
+            
+        except Exception as e:
+            logger.error(f"Error in fast processing: {e}")
             return ProcessingResult(
                 success=False,
                 error_message=str(e)

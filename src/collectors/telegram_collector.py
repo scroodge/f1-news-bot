@@ -171,17 +171,17 @@ class TelegramCollector(BaseCollector):
                 photo_sizes = [s for s in message.photo.sizes if hasattr(s, 'w') and hasattr(s, 'h')]
                 if photo_sizes:
                     largest_photo = max(photo_sizes, key=lambda s: s.w * s.h)
-                image_url = f"https://t.me/{channel_username}/{message.id}?single"
+                image_url = f"https://t.me/{channel_username}/{message.id}"
                 media_type = "photo"
             elif message.video:
-                video_url = f"https://t.me/{channel_username}/{message.id}?single"
+                video_url = f"https://t.me/{channel_username}/{message.id}"
                 media_type = "video"
             elif message.document:
                 if message.document.mime_type and message.document.mime_type.startswith('image/'):
-                    image_url = f"https://t.me/{channel_username}/{message.id}?single"
+                    image_url = f"https://t.me/{channel_username}/{message.id}"
                     media_type = "photo"
                 elif message.document.mime_type and message.document.mime_type.startswith('video/'):
-                    video_url = f"https://t.me/{channel_username}/{message.id}?single"
+                    video_url = f"https://t.me/{channel_username}/{message.id}"
                     media_type = "video"
             
             # Create news item

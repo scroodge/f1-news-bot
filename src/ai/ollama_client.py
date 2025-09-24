@@ -112,6 +112,158 @@ class OllamaClient:
         cyrillic_ratio = cyrillic_chars / total_chars
         return "russian" if cyrillic_ratio > 0.3 else "other"
     
+    def _is_english(self, text: str) -> bool:
+        """Check if text is in English"""
+        # Simple heuristic: check for Latin characters vs Cyrillic
+        latin_chars = sum(1 for char in text if char.isalpha() and ord(char) < 128)
+        cyrillic_chars = sum(1 for char in text if '\u0400' <= char <= '\u04FF')
+        total_chars = latin_chars + cyrillic_chars
+        
+        if total_chars == 0:
+            return False
+        
+        return latin_chars > cyrillic_chars
+    
+    def _translate_to_russian_simple(self, text: str) -> str:
+        """Simple translation fallback for English text"""
+        # Simple keyword-based translation for common F1 terms
+        translations = {
+            "driver": "гонщик",
+            "team": "команда",
+            "race": "гонка",
+            "championship": "чемпионат",
+            "points": "очки",
+            "overtake": "обгон",
+            "position": "позиция",
+            "chance": "шанс",
+            "risk": "риск",
+            "explains": "объясняет",
+            "thoughts": "мысли",
+            "decision": "решение",
+            "recent": "недавний",
+            "reveals": "раскрывает",
+            "chose": "выбрал",
+            "concerns": "опасения",
+            "losing": "потеря",
+            "personal": "личный",
+            "standings": "зачет",
+            "prioritized": "приоритизировал",
+            "chances": "шансы",
+            "winning": "победа",
+            "constructors": "конструкторов",
+            "significant": "значительный",
+            "factor": "фактор"
+        }
+        
+        # Simple word-by-word translation
+        words = text.split()
+        translated_words = []
+        for word in words:
+            # Remove punctuation for lookup
+            clean_word = word.strip('.,!?;:"()[]{}')
+            if clean_word.lower() in translations:
+                translated_words.append(translations[clean_word.lower()])
+            else:
+                translated_words.append(word)
+        
+        return " ".join(translated_words)
+    
+    def process_russian_news_fast(self, news_item: NewsItem) -> Dict[str, Any]:
+        """Fast processing for Russian news without Ollama"""
+        logger.info(f"Fast processing Russian news: {news_item.title[:50]}...")
+        
+        # Extract basic tags from title and content
+        tags = self._extract_tags_fast(news_item.title, news_item.content)
+        
+        # Calculate relevance score based on F1 keywords
+        relevance_score = self._calculate_relevance_fast(news_item.title, news_item.content)
+        
+        # Basic importance assessment (1-3)
+        importance_level = self._calculate_importance_fast(news_item.title, news_item.content)
+        
+        # Use first 200-300 characters as summary
+        summary = news_item.content[:250] + "..." if len(news_item.content) > 250 else news_item.content
+        
+        return {
+            "summary": summary,
+            "key_points": [],  # Empty for Russian news
+            "sentiment": "neutral",
+            "importance_level": importance_level,
+            "formatted_content": news_item.content,  # Use original content
+            "tags": tags,
+            "relevance_score": relevance_score,
+            "translated_title": news_item.title,  # No translation needed
+            "translated_content": news_item.content,  # No translation needed
+            "translated_summary": summary,  # No translation needed
+            "translated_key_points": [],  # Empty for Russian news
+            "translated_formatted_content": news_item.content  # No translation needed
+        }
+    
+    def _extract_tags_fast(self, title: str, content: str) -> List[str]:
+        """Extract basic tags from title and content"""
+        text = f"{title} {content}".lower()
+        
+        # F1-related keywords
+        f1_keywords = [
+            "формула 1", "f1", "гонка", "гонщик", "команда", "чемпионат",
+            "ферстаппен", "хэмилтон", "норрис", "леклер", "сайнц", "перес",
+            "альфатаури", "хаас", "астон мартин", "маклерен", "феррари",
+            "ред булл", "мерседес", "альпин", "вильямс", "заубер",
+            "квалификация", "гонка", "очки", "подиум", "победа",
+            "обгон", "авария", "штраф", "дисквалификация", "дрс"
+        ]
+        
+        tags = []
+        for keyword in f1_keywords:
+            if keyword in text:
+                tags.append(keyword.title())
+        
+        # Add source-specific tags
+        if "telegram" in text or "тг" in text:
+            tags.append("Telegram")
+        if "rss" in text or "лента" in text:
+            tags.append("RSS")
+        
+        return list(set(tags))[:5]  # Limit to 5 tags
+    
+    def _calculate_relevance_fast(self, title: str, content: str) -> float:
+        """Calculate relevance score based on F1 keywords"""
+        text = f"{title} {content}".lower()
+        
+        # High relevance keywords
+        high_relevance = [
+            "формула 1", "f1", "гонка", "гонщик", "команда", "чемпионат",
+            "квалификация", "очки", "подиум", "победа", "обгон"
+        ]
+        
+        # Medium relevance keywords
+        medium_relevance = [
+            "авария", "штраф", "дисквалификация", "дрс", "шины", "трасса"
+        ]
+        
+        # Count matches
+        high_count = sum(1 for keyword in high_relevance if keyword in text)
+        medium_count = sum(1 for keyword in medium_relevance if keyword in text)
+        
+        # Calculate score (0.0 to 1.0)
+        score = (high_count * 0.3) + (medium_count * 0.1)
+        return min(score, 1.0)
+    
+    def _calculate_importance_fast(self, title: str, content: str) -> int:
+        """Calculate importance level (1-3) based on content analysis"""
+        text = f"{title} {content}".lower()
+        
+        # High importance indicators
+        if any(word in text for word in ["победа", "рекорд", "исторический", "впервые", "сенсация"]):
+            return 3
+        
+        # Medium importance indicators
+        if any(word in text for word in ["авария", "штраф", "дисквалификация", "подиум", "очки"]):
+            return 2
+        
+        # Default importance
+        return 1
+    
     async def _translate_if_needed(self, title: str, content: str) -> tuple:
         """Translate title and content to Russian if needed"""
         # Check if title is in Russian
@@ -174,33 +326,27 @@ class OllamaClient:
         final_content = content if content else news_item.content
         
         prompt = f"""
-Проанализируй эту новость о Формуле 1 и предоставь структурированный ответ в формате JSON.
+ТЫ ДОЛЖЕН ОТВЕЧАТЬ ТОЛЬКО НА РУССКОМ ЯЗЫКЕ! НИКАКИХ АНГЛИЙСКИХ СЛОВ!
+
+Проанализируй эту новость о Формуле 1 и создай JSON ответ НА РУССКОМ ЯЗЫКЕ.
 
 Заголовок: {final_title}
 Содержание: {final_content}
 Источник: {news_item.source}
 URL: {news_item.url}
 
-Пожалуйста, предоставь следующую информацию в формате JSON:
+Создай JSON с полями НА РУССКОМ ЯЗЫКЕ:
 
-1. summary: Краткое изложение статьи в 2-3 предложениях
-2. key_points: Массив из 3-5 ключевых моментов статьи
-3. sentiment: Одно из "positive", "negative", или "neutral"
-4. importance_level: Целое число от 1-5 (1=низкая, 5=высокая важность)
-5. formatted_content: Хорошо отформатированная версия для социальных сетей с эмодзи и хештегами
-6. tags: Массив релевантных тегов (например, ["F1", "Хэмилтон", "Мерседес", "Гонка"])
-
-Сосредоточься на контенте, связанном с F1, и сделай его привлекательным для социальных сетей.
-
-Формат ответа (только JSON):
 {{
-    "summary": "...",
-    "key_points": ["...", "..."],
-    "sentiment": "...",
-    "importance_level": ...,
-    "formatted_content": "...",
-    "tags": ["...", "..."]
+    "summary": "Краткое изложение на русском языке в 2-3 предложениях",
+    "key_points": ["Первый ключевой момент на русском", "Второй ключевой момент на русском", "Третий ключевой момент на русском"],
+    "sentiment": "positive/negative/neutral",
+    "importance_level": 1-5,
+    "formatted_content": "Отформатированный текст для соцсетей на русском с эмодзи",
+    "tags": ["F1", "Русский тег", "Еще тег"]
 }}
+
+ВАЖНО: Все текстовые поля должны быть на русском языке!
 """
         return prompt
     
@@ -247,7 +393,35 @@ URL: {news_item.url}
             
             if start_idx != -1 and end_idx != 0:
                 json_str = response[start_idx:end_idx]
-                return json.loads(json_str)
+                # Clean up JSON string - remove any trailing commas or invalid characters
+                json_str = json_str.rstrip(',')
+                parsed_data = json.loads(json_str)
+                
+                # Force Russian language for text fields
+                if 'summary' in parsed_data and isinstance(parsed_data['summary'], str):
+                    # If summary is in English, translate it
+                    if self._is_english(parsed_data['summary']):
+                        parsed_data['summary'] = self._translate_to_russian_simple(parsed_data['summary'])
+                
+                if 'key_points' in parsed_data and isinstance(parsed_data['key_points'], list):
+                    # Translate key points if they are in English
+                    translated_points = []
+                    for point in parsed_data['key_points']:
+                        if isinstance(point, str):
+                            if self._is_english(point):
+                                translated_points.append(self._translate_to_russian_simple(point))
+                            else:
+                                translated_points.append(point)
+                        else:
+                            translated_points.append(str(point))
+                    parsed_data['key_points'] = translated_points
+                
+                if 'formatted_content' in parsed_data and isinstance(parsed_data['formatted_content'], str):
+                    # Translate formatted content if it's in English
+                    if self._is_english(parsed_data['formatted_content']):
+                        parsed_data['formatted_content'] = self._translate_to_russian_simple(parsed_data['formatted_content'])
+                
+                return parsed_data
             else:
                 # Fallback: create basic response
                 return {
