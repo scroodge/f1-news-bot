@@ -23,27 +23,33 @@ def setup_telegram_api():
     
     try:
         # Create client
-        client = TelegramClient("f1_news_bot", api_id, api_hash)
+        client = TelegramClient("telegram_session", api_id, api_hash)
         
         print("\n📱 Starting authentication...")
         client.start(phone=phone)
         
+        # Check if user is authorized (async method)
         if not client.is_user_authorized():
             print("❌ Authentication failed!")
             return False
         
         print("✅ Authentication successful!")
         
-        # Test channel access
+        # Test channel access (async methods)
         print("\n🔍 Testing channel access...")
         test_channels = ["@first_places", "@f1kekw"]
         
-        for channel in test_channels:
-            try:
-                entity = client.get_entity(channel)
-                print(f"✅ Can access {channel}: {entity.title}")
-            except Exception as e:
-                print(f"❌ Cannot access {channel}: {e}")
+        async def test_channels_async():
+            for channel in test_channels:
+                try:
+                    entity = await client.get_entity(channel)
+                    print(f"✅ Can access {channel}: {entity.title}")
+                except Exception as e:
+                    print(f"❌ Cannot access {channel}: {e}")
+        
+        # Run async test
+        import asyncio
+        asyncio.run(test_channels_async())
         
         client.disconnect()
         
@@ -52,6 +58,14 @@ def setup_telegram_api():
         update_env_file(api_id, api_hash, phone)
         
         print("\n🎉 Setup complete! Telegram collector is now enabled.")
+        
+        # Check if session file was created
+        session_file = "telegram_session.session"
+        if os.path.exists(session_file):
+            print(f"✅ Session file created: {session_file}")
+        else:
+            print(f"⚠️ Session file not found: {session_file}")
+        
         return True
         
     except Exception as e:
