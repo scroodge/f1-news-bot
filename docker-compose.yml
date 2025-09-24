@@ -40,6 +40,7 @@ services:
         condition: service_healthy
     volumes:
       - ./logs:/app/logs
+      - ./telegram_session.session:/app/telegram_session.session
     restart: unless-stopped
     extra_hosts:
       - "host.docker.internal:host-gateway"

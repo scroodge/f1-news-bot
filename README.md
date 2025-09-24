@@ -62,11 +62,15 @@ sudo apt install python3.11 python3.11-venv python3.11-dev
 git clone https://github.com/yourusername/f1-news-bot.git
 cd f1-news-bot
 
-# 2. Настройка
+# 2. Настройка окружения
 cp config.env.example .env
 # Отредактируйте .env с вашими настройками
 
-# 3. Запуск всей системы
+# 3. Настройка Telegram авторизации (обязательно!)
+chmod +x setup_telegram_docker.sh
+./setup_telegram_docker.sh
+
+# 4. Запуск всей системы
 ./docker-run-all.sh
 ```
 
@@ -124,21 +128,36 @@ docker compose down
 Если при запуске возникают ошибки типа `No module named 'async_timeout'`:
 
 ```bash
-# 1. Убедитесь что используете Python 3.11+
-python3 --version
-
-# 2. Пересоздайте виртуальное окружение
+# Пересоздайте виртуальное окружение
 rm -rf venv
 python3 -m venv venv
 source venv/bin/activate
-
-# 3. Обновите pip и установите зависимости
-pip install --upgrade pip setuptools wheel
 pip install -r requirements.txt
-
-# 4. Проверьте установку
-python -c "import async_timeout, aiohttp, fastapi; print('OK')"
 ```
+
+## 🔐 Настройка Telegram авторизации для Docker
+
+**Важно:** Telegram коллектор требует авторизацию с логином/паролем для чтения каналов.
+
+### Автоматическая настройка:
+```bash
+chmod +x setup_telegram_docker.sh
+./setup_telegram_docker.sh
+```
+
+### Ручная настройка:
+```bash
+# 1. Авторизация локально
+python setup_telegram_api.py
+
+# 2. Копирование сессии в Docker
+docker cp telegram_session.session container_name:/app/telegram_session.session
+
+# 3. Перезапуск контейнеров
+docker compose down && docker compose up -d
+```
+
+**Примечание:** Файл `telegram_session.session` содержит авторизационные данные и должен быть защищен!
 
 ## 🚀 Быстрый запуск
 
@@ -155,12 +174,7 @@ python3 --version  # или python3.11 --version
 # Создание виртуального окружения (требуется Python 3.11+)
 python3.11 -m venv venv  # или python3 -m venv venv если Python 3.11 по умолчанию
 source venv/bin/activate  # На Windows: venv\Scripts\activate
-pip install --upgrade pip setuptools wheel
 pip install -r requirements.txt
-
-# Или используйте автоматический скрипт:
-# chmod +x install_dependencies.sh
-# ./install_dependencies.sh
 
 # Настройка окружения
 cp .env.example .env
