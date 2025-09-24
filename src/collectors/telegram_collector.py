@@ -14,6 +14,7 @@ from telethon.errors import SessionPasswordNeededError, FloodWaitError
 from .base_collector import BaseCollector
 from ..models import NewsItem, SourceType
 from ..config import settings, F1_KEYWORDS
+from ..utils.timezone import get_hours_ago_utc, utc_now
 
 logger = logging.getLogger(__name__)
 
@@ -91,8 +92,8 @@ class TelegramCollector(BaseCollector):
             # Get channel entity
             entity = await self.client.get_entity(channel)
             
-            # Get messages from the last 24 hours
-            since_date = datetime.utcnow() - timedelta(hours=24)
+            # Get messages from the last 24 hours (using UTC)
+            since_date = get_hours_ago_utc(24)
             
             news_items = []
             async for message in self.client.iter_messages(

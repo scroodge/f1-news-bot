@@ -12,6 +12,7 @@ from ..models import ProcessedNewsItem, PublicationResult, SourceType
 from ..config import settings
 from ..services.redis_service import redis_service
 from ..database import db_manager
+from ..utils.timezone import format_datetime
 
 logger = logging.getLogger(__name__)
 
@@ -251,7 +252,7 @@ class F1NewsBot:
                         message += f"**Краткое содержание:**\n{item.summary}\n\n"
                         message += f"**Источник:** {item.source}\n"
                         message += f"**Важность:** {item.importance_level}/5\n"
-                        message += f"**Опубликовано:** {item.published_at.strftime('%d.%m.%Y %H:%M')}\n\n"
+                        message += f"**Опубликовано:** {format_datetime(item.published_at)}\n\n"
                         message += "Эта новость уже была опубликована."
                         
                         keyboard = [
@@ -375,11 +376,16 @@ class F1NewsBot:
             for i, item in enumerate(self.pending_publications[start_idx:end_idx], start_idx + 1):
                 # Создаем ссылку для быстрой публикации
                 publish_link = f"t.me/{self.bot.username}?start=publish_{item.id}" if self.bot.username else f"t.me/{self.bot.id}?start=publish_{item.id}"
+                
+                # Форматируем время добавления в БД (в локальном часовом поясе)
+                created_time = format_datetime(item.created_at) if item.created_at else 'Неизвестно'
+                
                 queue_message += (
                     f"{i}. <a href='{publish_link}'>{item.title[:50]}...</a>\n"
                     f"   Источник: {item.source}\n"
                     f"   Релевантность: {item.relevance_score:.2f}\n"
-                    f"   Важность: {item.importance_level}/5\n\n"
+                    f"   Важность: {item.importance_level}/5\n"
+                    f"   📅 Добавлено: {created_time}\n\n"
                 )
 
             # Создаем кнопки навигации
@@ -582,9 +588,14 @@ class F1NewsBot:
             for i, item in enumerate(published_news, offset + 1):
                 # Создаем ссылку для быстрого просмотра
                 view_link = f"t.me/{self.bot.username}?start=view_{item.id}" if self.bot.username else f"t.me/{self.bot.id}?start=view_{item.id}"
+                
+                # Форматируем время добавления в БД (в локальном часовом поясе)
+                created_time = format_datetime(item.created_at) if item.created_at else 'Неизвестно'
+                
                 message += f"{i}. <a href='{view_link}'>{item.title[:50]}...</a>\n"
                 message += f"   Источник: {item.source}\n"
-                message += f"   Опубликовано: {item.published_at.strftime('%d.%m.%Y %H:%M')}\n"
+                message += f"   📅 Добавлено: {created_time}\n"
+                message += f"   📢 Опубликовано: {format_datetime(item.published_at)}\n"
                 message += f"   Важность: {item.importance_level}/5\n\n"
 
             # Создаем кнопки навигации

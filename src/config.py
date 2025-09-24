@@ -84,9 +84,12 @@ class Settings(BaseSettings):
     
     # Processing Configuration
     check_interval_minutes: int = Field(default=30, env="CHECK_INTERVAL_MINUTES")
-    min_relevance_score: float = Field(default=0.7, env="MIN_RELEVANCE_SCORE")
+    min_relevance_score: float = Field(default=0.3, env="MIN_RELEVANCE_SCORE")
     max_news_items_per_check: int = Field(default=50, env="MAX_NEWS_ITEMS_PER_CHECK")
     max_posts_per_hour: int = Field(default=5, env="MAX_POSTS_PER_HOUR")
+    
+    # Timezone Configuration
+    timezone: str = Field(default="Europe/Moscow", env="TIMEZONE")
     
     # Logging Configuration
     log_level: str = Field(default="INFO", env="LOG_LEVEL")

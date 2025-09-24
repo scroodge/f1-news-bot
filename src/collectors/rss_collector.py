@@ -11,6 +11,7 @@ import logging
 from .base_collector import BaseCollector
 from ..models import NewsItem, SourceType
 from ..config import settings, F1_KEYWORDS
+from ..utils.timezone import utc_now
 
 logger = logging.getLogger(__name__)
 
@@ -42,7 +43,7 @@ class RSSCollector(BaseCollector):
             except Exception as e:
                 logger.error(f"Error collecting from {feed_url}: {e}")
         
-        self.last_check = datetime.utcnow()
+        self.last_check = utc_now()
         return all_news
     
     async def _collect_from_feed(self, feed_url: str) -> List[NewsItem]:
@@ -67,13 +68,21 @@ class RSSCollector(BaseCollector):
                         title = entry.get('title', '')
                         content = entry.get('summary', entry.get('description', ''))
                         
+                        # Extract media information
+                        image_url = self._extract_image_url(entry)
+                        video_url = self._extract_video_url(entry)
+                        media_type = self._determine_media_type(image_url, video_url)
+                        
                         news_item = NewsItem(
                             title=title,
                             content=content,
                             url=entry.get('link', ''),
                             source=feed.feed.get('title', feed_url),
                             source_type=SourceType.RSS,
-                            published_at=self._parse_date(entry.get('published', ''))
+                            published_at=self._parse_date(entry.get('published', '')),
+                            image_url=image_url,
+                            video_url=video_url,
+                            media_type=media_type
                         )
                         
                         # Calculate relevance score and extract keywords
@@ -117,6 +126,77 @@ class RSSCollector(BaseCollector):
         except Exception as e:
             logger.error(f"Error parsing date '{date_str}': {e}")
             return datetime.utcnow()
+    
+    def _extract_image_url(self, entry) -> str:
+        """Extract image URL from RSS entry"""
+        try:
+            # Check for media:content with image type
+            if hasattr(entry, 'media_content'):
+                for media in entry.media_content:
+                    if media.get('type', '').startswith('image/'):
+                        return media.get('url', '')
+            
+            # Check for media:thumbnail
+            if hasattr(entry, 'media_thumbnail'):
+                for thumb in entry.media_thumbnail:
+                    if thumb.get('url'):
+                        return thumb.get('url')
+            
+            # Check for enclosure with image type
+            if hasattr(entry, 'enclosures'):
+                for enclosure in entry.enclosures:
+                    if enclosure.get('type', '').startswith('image/'):
+                        return enclosure.get('href', '')
+            
+            # Check for image in content/summary
+            content = entry.get('summary', entry.get('description', ''))
+            if content:
+                import re
+                # Look for img tags
+                img_match = re.search(r'<img[^>]+src=["\']([^"\']+)["\']', content, re.IGNORECASE)
+                if img_match:
+                    return img_match.group(1)
+                
+                # Look for direct image URLs
+                img_url_match = re.search(r'https?://[^\s<>"\']+\.(?:jpg|jpeg|png|gif|webp)', content, re.IGNORECASE)
+                if img_url_match:
+                    return img_url_match.group(0)
+            
+            return None
+            
+        except Exception as e:
+            logger.error(f"Error extracting image URL: {e}")
+            return None
+    
+    def _extract_video_url(self, entry) -> str:
+        """Extract video URL from RSS entry"""
+        try:
+            # Check for media:content with video type
+            if hasattr(entry, 'media_content'):
+                for media in entry.media_content:
+                    if media.get('type', '').startswith('video/'):
+                        return media.get('url', '')
+            
+            # Check for enclosure with video type
+            if hasattr(entry, 'enclosures'):
+                for enclosure in entry.enclosures:
+                    if enclosure.get('type', '').startswith('video/'):
+                        return enclosure.get('href', '')
+            
+            return None
+            
+        except Exception as e:
+            logger.error(f"Error extracting video URL: {e}")
+            return None
+    
+    def _determine_media_type(self, image_url: str, video_url: str) -> str:
+        """Determine media type based on available URLs"""
+        if video_url:
+            return "video"
+        elif image_url:
+            return "photo"
+        else:
+            return None
     
     async def close(self):
         """Close collector"""

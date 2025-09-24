@@ -9,6 +9,7 @@ from typing import Optional
 import json
 
 from ..config import settings
+from ..utils.timezone import local_now
 
 class ColoredFormatter(logging.Formatter):
     """Colored formatter for console output"""
@@ -37,6 +38,7 @@ class JSONFormatter(logging.Formatter):
     def format(self, record):
         log_entry = {
             'timestamp': datetime.utcnow().isoformat(),
+            'local_time': local_now().strftime('%d.%m.%Y %H:%M:%S'),
             'level': record.levelname,
             'logger': record.name,
             'message': record.getMessage(),
