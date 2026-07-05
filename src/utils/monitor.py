@@ -120,9 +120,8 @@ class SystemMonitor:
                 "status": True,
                 "message": "Database connection OK",
                 "details": {
-                    "total_news": stats.total_news_collected,
-                    "processed_news": stats.total_news_processed,
-                    "published_news": stats.total_news_published,
+                    "total_news": stats.total_collected,
+                    "by_status": stats.by_status,
                 },
             }
 
@@ -165,10 +164,11 @@ class SystemMonitor:
     async def _check_redis(self) -> dict[str, Any]:
         """Check Redis connectivity"""
         try:
-            # Simple ping test
-            db_manager.redis.ping()
+            from ..services.redis_service import redis_service
 
-            return {"status": True, "message": "Redis connection OK", "details": {}}
+            if await redis_service.ping():
+                return {"status": True, "message": "Redis connection OK", "details": {}}
+            return {"status": False, "message": "Redis ping failed", "details": {}}
 
         except Exception as e:
             return {"status": False, "message": f"Redis connection failed: {e}", "details": {}}

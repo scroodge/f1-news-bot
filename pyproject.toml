@@ -11,8 +11,7 @@ dependencies = [
     "requests>=2.32",
     "feedparser>=6.0.11",
     "redis>=5.2",
-    "psycopg2-binary>=2.9.10",
-    "sqlalchemy>=2.0.36",
+    "sqlalchemy[asyncio]>=2.0.36",
     "python-dotenv>=1.0.1",
     "pydantic>=2.9",
     "pydantic-settings>=2.6",
@@ -23,10 +22,13 @@ dependencies = [
     "psutil>=6.1",
     "python-dateutil>=2.9",
     "telethon>=1.37",
+    "asyncpg>=0.31.0",
+    "alembic>=1.18.5",
 ]
 
 [dependency-groups]
 dev = [
+    "aiosqlite>=0.22.1",
     "pytest>=8.3",
     "pytest-asyncio>=0.24",
     "ruff>=0.8",

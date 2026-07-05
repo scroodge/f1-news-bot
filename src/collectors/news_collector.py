@@ -9,7 +9,6 @@ from typing import Any
 from ..database import db_manager
 from ..models import NewsItem
 from .base_collector import BaseCollector
-from .reddit_collector import RedditCollector
 from .rss_collector import RSSCollector
 from .telegram_collector import TelegramCollector
 
@@ -28,7 +27,6 @@ class NewsCollector:
         self.collectors = {
             "rss": RSSCollector(),
             "telegram": TelegramCollector(),
-            "reddit": RedditCollector(),
         }
         logger.info(f"Initialized {len(self.collectors)} collectors")
 
@@ -72,13 +70,11 @@ class NewsCollector:
 
             news_items = await collector.collect_news()
 
-            # Save to database
+            # Save to database (unique URL constraint dedups atomically)
             saved_count = 0
             for item in news_items:
                 try:
-                    # Check for duplicates
-                    if not await db_manager.check_duplicate(item.url):
-                        await db_manager.save_news_item(item)
+                    if await db_manager.save_news_item(item) is not None:
                         saved_count += 1
                 except Exception as e:
                     logger.error(f"Error saving news item: {e}")

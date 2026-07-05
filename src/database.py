@@ -1,135 +1,158 @@
 """
-Database operations for F1 News Bot
+Async database layer for F1 News Bot.
+
+One table, one source of truth: `news_items` moves through NewsStatus
+(collected -> processed -> queued -> published / rejected). Schema is managed
+by Alembic (see alembic/); `create_tables()` exists for tests only.
 """
 
-import json
 import logging
 import uuid
 from datetime import datetime, timedelta
-from typing import Any
 
-import redis
-from sqlalchemy import JSON, Boolean, Column, DateTime, Float, Integer, String, Text, create_engine
-from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy import (
+    JSON,
+    DateTime,
+    Enum,
+    Float,
+    Integer,
+    String,
+    Text,
+    Uuid,
+    func,
+    select,
+)
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 from .config import settings
-from .models import NewsItem, ProcessedNewsItem, PublishedNewsItem, SourceType, Stats
+from .models import NewsItem, NewsStatus, ProcessedNewsItem, SourceType, Stats
 
 logger = logging.getLogger(__name__)
 
-# Database setup
-engine = create_engine(settings.database_url)
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-Base = declarative_base()
 
-# Redis setup
-redis_client = redis.from_url(settings.redis_url)
+class Base(DeclarativeBase):
+    pass
 
 
 class NewsItemDB(Base):
-    """News item database model"""
+    """News item — one row for the whole lifecycle"""
 
     __tablename__ = "news_items"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    title = Column(String, nullable=False)
-    content = Column(Text, nullable=False)
-    url = Column(String, nullable=False, unique=True)
-    source = Column(String, nullable=False)
-    source_type = Column(String, nullable=False)
-    published_at = Column(DateTime, nullable=False)
-    relevance_score = Column(Float, default=0.0)
-    keywords = Column(JSON, default=list)
-    processed = Column(Boolean, default=False)
-    published = Column(Boolean, default=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    title: Mapped[str] = mapped_column(String, nullable=False)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    url: Mapped[str] = mapped_column(String, nullable=False, unique=True)
+    source: Mapped[str] = mapped_column(String, nullable=False)
+    source_type: Mapped[str] = mapped_column(String, nullable=False)
+    published_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    relevance_score: Mapped[float] = mapped_column(Float, default=0.0)
+    keywords: Mapped[list] = mapped_column(JSON, default=list)
+    status: Mapped[NewsStatus] = mapped_column(
+        Enum(NewsStatus, native_enum=False, values_callable=lambda e: [m.value for m in e]),
+        default=NewsStatus.COLLECTED,
+        index=True,
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     # Media fields
-    image_url = Column(String, nullable=True)
-    video_url = Column(String, nullable=True)
-    media_type = Column(String, nullable=True)
+    image_url: Mapped[str | None] = mapped_column(String, nullable=True)
+    video_url: Mapped[str | None] = mapped_column(String, nullable=True)
+    media_type: Mapped[str | None] = mapped_column(String, nullable=True)
 
     # Processed fields
-    summary = Column(Text, nullable=True)
-    key_points = Column(JSON, default=list)
-    sentiment = Column(String, default="neutral")
-    importance_level = Column(Integer, default=1)
-    formatted_content = Column(Text, nullable=True)
-    tags = Column(JSON, default=list)
+    summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    key_points: Mapped[list] = mapped_column(JSON, default=list)
+    sentiment: Mapped[str] = mapped_column(String, default="neutral")
+    importance_level: Mapped[int] = mapped_column(Integer, default=1)
+    formatted_content: Mapped[str | None] = mapped_column(Text, nullable=True)
+    tags: Mapped[list] = mapped_column(JSON, default=list)
 
     # Translated content fields
-    translated_title = Column(Text, nullable=True)
-    translated_summary = Column(Text, nullable=True)
-    translated_key_points = Column(JSON, default=list)
-    original_language = Column(String, nullable=True)
+    translated_title: Mapped[str | None] = mapped_column(Text, nullable=True)
+    translated_summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    translated_key_points: Mapped[list] = mapped_column(JSON, default=list)
+    original_language: Mapped[str | None] = mapped_column(String, nullable=True)
+
+    # Moderation / publication metadata
+    rejected_reason: Mapped[str | None] = mapped_column(String, nullable=True)
+    moderated_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    telegram_message_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    published_to_channel_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
 
-class PublishedNewsItemDB(Base):
-    """Published news item database model"""
-
-    __tablename__ = "published_news_items"
-
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    title = Column(String, nullable=False)
-    content = Column(Text, nullable=False)
-    url = Column(String, nullable=False)
-    source = Column(String, nullable=False)
-    source_type = Column(String, nullable=False)
-    published_at = Column(DateTime, nullable=False)
-    relevance_score = Column(Float, default=0.0)
-    keywords = Column(JSON, default=list)
-    processed = Column(Boolean, default=True)
-    published = Column(Boolean, default=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
-
-    # Media fields
-    image_url = Column(String, nullable=True)
-    video_url = Column(String, nullable=True)
-    media_type = Column(String, nullable=True)
-
-    # Processed fields
-    summary = Column(Text, nullable=True)
-    key_points = Column(JSON, default=list)
-    sentiment = Column(String, default="neutral")
-    importance_level = Column(Integer, default=1)
-    formatted_content = Column(Text, nullable=True)
-    tags = Column(JSON, default=list)
-
-    # Translated content fields
-    translated_title = Column(Text, nullable=True)
-    translated_summary = Column(Text, nullable=True)
-    translated_key_points = Column(JSON, default=list)
-    original_language = Column(String, nullable=True)
-
-    # Publication fields
-    published_by = Column(String, default="telegram_bot")
-    telegram_message_id = Column(Integer, nullable=True)
-    publication_status = Column(String, default="published")
-    views_count = Column(Integer, default=0)
-    engagement_count = Column(Integer, default=0)
-    publication_created_at = Column(DateTime, default=datetime.utcnow)
+def _to_model(item: NewsItemDB) -> ProcessedNewsItem | NewsItem:
+    """Convert a DB row to the appropriate pydantic model"""
+    base = {
+        "id": str(item.id),
+        "title": item.title,
+        "content": item.content,
+        "url": item.url,
+        "source": item.source,
+        "source_type": SourceType(item.source_type),
+        "published_at": item.published_at,
+        "relevance_score": item.relevance_score,
+        "keywords": item.keywords or [],
+        "status": NewsStatus(item.status),
+        "created_at": item.created_at,
+        "image_url": item.image_url,
+        "video_url": item.video_url,
+        "media_type": item.media_type,
+    }
+    if item.status == NewsStatus.COLLECTED:
+        return NewsItem(**base)
+    return ProcessedNewsItem(
+        **base,
+        summary=item.summary or "",
+        key_points=item.key_points or [],
+        sentiment=item.sentiment or "neutral",
+        importance_level=item.importance_level or 1,
+        formatted_content=item.formatted_content or "",
+        tags=item.tags or [],
+        translated_title=item.translated_title,
+        translated_summary=item.translated_summary,
+        translated_key_points=item.translated_key_points or [],
+        original_language=item.original_language,
+        rejected_reason=item.rejected_reason,
+        telegram_message_id=item.telegram_message_id,
+        published_to_channel_at=item.published_to_channel_at,
+    )
 
 
 class DatabaseManager:
-    """Database operations manager"""
+    """Async database operations manager"""
 
-    def __init__(self):
-        self.engine = engine
-        self.redis = redis_client
+    def __init__(self, database_url: str | None = None):
+        self.engine = create_async_engine(database_url or settings.database_url_async)
+        self.session_factory = async_sessionmaker(self.engine, expire_on_commit=False)
 
-    def create_tables(self):
-        """Create all database tables"""
-        Base.metadata.create_all(bind=self.engine)
+    def session(self) -> AsyncSession:
+        return self.session_factory()
 
-    def get_session(self) -> Session:
-        """Get database session"""
-        return SessionLocal()
+    async def create_tables(self):
+        """Create tables directly — for tests; production schema is Alembic's job"""
+        async with self.engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
 
-    async def save_news_item(self, news_item: NewsItem) -> str:
-        """Save news item to database"""
-        with self.get_session() as session:
+    async def close(self):
+        await self.engine.dispose()
+
+    async def ping(self) -> bool:
+        try:
+            async with self.session() as s:
+                await s.execute(select(1))
+            return True
+        except Exception as e:
+            logger.error(f"Database ping failed: {e}")
+            return False
+
+    # --- writes -----------------------------------------------------------
+
+    async def save_news_item(self, news_item: NewsItem) -> str | None:
+        """Insert a collected item. Returns id, or None when the URL already exists."""
+        async with self.session() as s:
             db_item = NewsItemDB(
                 title=news_item.title,
                 content=news_item.content,
@@ -139,308 +162,233 @@ class DatabaseManager:
                 published_at=news_item.published_at,
                 relevance_score=news_item.relevance_score,
                 keywords=news_item.keywords,
-                processed=news_item.processed,
-                published=news_item.published,
+                status=NewsStatus.COLLECTED,
                 image_url=news_item.image_url,
                 video_url=news_item.video_url,
                 media_type=news_item.media_type,
             )
-            session.add(db_item)
-            session.commit()
+            s.add(db_item)
+            try:
+                await s.commit()
+            except IntegrityError:
+                await s.rollback()
+                return None
             return str(db_item.id)
 
-    async def update_processed_news(self, news_id: str, processed_item: ProcessedNewsItem) -> bool:
-        """Update news item with processed data"""
-        with self.get_session() as session:
-            db_item = session.query(NewsItemDB).filter(NewsItemDB.id == news_id).first()
-            if not db_item:
+    async def mark_processed(self, news_id: str, processed: ProcessedNewsItem) -> bool:
+        """Attach AI results and move collected -> processed"""
+        async with self.session() as s:
+            item = await s.get(NewsItemDB, uuid.UUID(news_id))
+            if not item:
                 return False
-
-            # Update original content
-            db_item.title = processed_item.title
-            db_item.content = processed_item.content
-
-            # Update media fields
-            db_item.image_url = processed_item.image_url
-            db_item.video_url = processed_item.video_url
-            db_item.media_type = processed_item.media_type
-
-            # Update processed fields
-            db_item.summary = processed_item.summary
-            db_item.key_points = processed_item.key_points
-            db_item.sentiment = processed_item.sentiment
-            db_item.importance_level = processed_item.importance_level
-            db_item.formatted_content = processed_item.formatted_content
-            db_item.tags = processed_item.tags
-
-            # Update translated content fields
-            db_item.translated_title = processed_item.translated_title
-            db_item.translated_summary = processed_item.translated_summary
-            db_item.translated_key_points = processed_item.translated_key_points
-            db_item.original_language = processed_item.original_language
-
-            db_item.processed = True
-
-            session.commit()
+            item.summary = processed.summary
+            item.key_points = processed.key_points
+            item.sentiment = processed.sentiment
+            item.importance_level = processed.importance_level
+            item.formatted_content = processed.formatted_content
+            item.tags = processed.tags
+            item.translated_title = processed.translated_title
+            item.translated_summary = processed.translated_summary
+            item.translated_key_points = processed.translated_key_points
+            item.original_language = processed.original_language
+            item.status = NewsStatus.PROCESSED
+            await s.commit()
             return True
 
-    async def mark_as_published(self, news_id: str) -> bool:
-        """Mark news item as published"""
-        with self.get_session() as session:
-            db_item = session.query(NewsItemDB).filter(NewsItemDB.id == news_id).first()
-            if not db_item:
-                return False
+    async def approve(self, news_id: str) -> bool:
+        """Admin approved: processed -> queued"""
+        return await self._transition(
+            news_id, from_statuses={NewsStatus.PROCESSED}, to_status=NewsStatus.QUEUED
+        )
 
-            db_item.published = True
-            session.commit()
+    async def reject(self, news_id: str, reason: str | None = None) -> bool:
+        """Rules or admin rejected: collected/processed/queued -> rejected"""
+        async with self.session() as s:
+            item = await s.get(NewsItemDB, uuid.UUID(news_id))
+            if not item or item.status == NewsStatus.PUBLISHED:
+                return False
+            item.status = NewsStatus.REJECTED
+            item.rejected_reason = reason
+            item.moderated_at = datetime.utcnow()
+            await s.commit()
             return True
 
-    async def get_unprocessed_news(self, limit: int = 10) -> list[NewsItem]:
-        """Get unprocessed news items"""
-        with self.get_session() as session:
-            db_items = (
-                session.query(NewsItemDB)
-                .filter(
-                    NewsItemDB.processed.is_(False),
-                    NewsItemDB.relevance_score >= settings.min_relevance_score,
-                )
-                .limit(limit)
-                .all()
+    async def mark_published(self, news_id: str, telegram_message_id: int | None = None) -> bool:
+        """Publisher done: queued -> published"""
+        async with self.session() as s:
+            item = await s.get(NewsItemDB, uuid.UUID(news_id))
+            if not item:
+                return False
+            item.status = NewsStatus.PUBLISHED
+            item.telegram_message_id = telegram_message_id
+            item.published_to_channel_at = datetime.utcnow()
+            await s.commit()
+            return True
+
+    async def _transition(self, news_id: str, from_statuses: set, to_status: NewsStatus) -> bool:
+        async with self.session() as s:
+            item = await s.get(NewsItemDB, uuid.UUID(news_id))
+            if not item or NewsStatus(item.status) not in from_statuses:
+                return False
+            item.status = to_status
+            item.moderated_at = datetime.utcnow()
+            await s.commit()
+            return True
+
+    async def update_fields(self, news_id: str, **fields) -> bool:
+        """Update editable content fields (title, summary, ...)"""
+        allowed = {"title", "summary", "formatted_content", "tags", "importance_level"}
+        unknown = set(fields) - allowed
+        if unknown:
+            raise ValueError(f"Fields not editable: {unknown}")
+        async with self.session() as s:
+            item = await s.get(NewsItemDB, uuid.UUID(news_id))
+            if not item:
+                return False
+            for key, value in fields.items():
+                setattr(item, key, value)
+            await s.commit()
+            return True
+
+    async def delete_item(self, news_id: str) -> bool:
+        async with self.session() as s:
+            item = await s.get(NewsItemDB, uuid.UUID(news_id))
+            if not item:
+                return False
+            await s.delete(item)
+            await s.commit()
+            logger.info(f"Deleted news item {news_id}")
+            return True
+
+    async def reject_all_pending(self) -> int:
+        """Reject everything awaiting moderation. Returns count."""
+        async with self.session() as s:
+            result = await s.execute(
+                select(NewsItemDB).where(NewsItemDB.status == NewsStatus.PROCESSED)
             )
+            items = result.scalars().all()
+            for item in items:
+                item.status = NewsStatus.REJECTED
+                item.rejected_reason = "bulk-rejected by admin"
+                item.moderated_at = datetime.utcnow()
+            await s.commit()
+            return len(items)
 
-            return [
-                NewsItem(
-                    id=str(item.id),
-                    title=item.title,
-                    content=item.content,
-                    url=item.url,
-                    source=item.source,
-                    source_type=SourceType(item.source_type),
-                    published_at=item.published_at,
-                    relevance_score=item.relevance_score,
-                    keywords=item.keywords or [],
-                    processed=item.processed,
-                    published=item.published,
-                    created_at=item.created_at,
-                )
-                for item in db_items
-            ]
+    # --- reads ------------------------------------------------------------
 
-    async def get_news_for_publication(self, limit: int = 5) -> list[ProcessedNewsItem]:
-        """Get processed news items ready for publication"""
-        with self.get_session() as session:
-            db_items = (
-                session.query(NewsItemDB)
-                .filter(NewsItemDB.processed.is_(True), NewsItemDB.published.is_(False))
-                .order_by(NewsItemDB.importance_level.desc(), NewsItemDB.relevance_score.desc())
-                .limit(limit)
-                .all()
-            )
+    async def get_item(self, news_id: str) -> ProcessedNewsItem | NewsItem | None:
+        async with self.session() as s:
+            try:
+                item = await s.get(NewsItemDB, uuid.UUID(news_id))
+            except ValueError:
+                return None
+            return _to_model(item) if item else None
 
-            return [
-                ProcessedNewsItem(
-                    id=str(item.id),
-                    title=item.title,
-                    content=item.content,
-                    url=item.url,
-                    source=item.source,
-                    source_type=SourceType(item.source_type),
-                    published_at=item.published_at,
-                    relevance_score=item.relevance_score,
-                    keywords=item.keywords or [],
-                    processed=item.processed,
-                    published=item.published,
-                    created_at=item.created_at,
-                    summary=item.summary or "",
-                    key_points=item.key_points or [],
-                    sentiment=item.sentiment,
-                    importance_level=item.importance_level,
-                    formatted_content=item.formatted_content or "",
-                    tags=item.tags or [],
-                )
-                for item in db_items
-            ]
-
-    async def check_duplicate(self, url: str) -> bool:
-        """Check if news item already exists"""
-        with self.get_session() as session:
-            existing = session.query(NewsItemDB).filter(NewsItemDB.url == url).first()
-            return existing is not None
-
-    async def get_stats(self) -> Stats:
-        """Get bot statistics"""
-        with self.get_session() as session:
-            total_collected = session.query(NewsItemDB).count()
-            total_processed = (
-                session.query(NewsItemDB).filter(NewsItemDB.processed.is_(True)).count()
-            )
-            total_published = (
-                session.query(NewsItemDB).filter(NewsItemDB.published.is_(True)).count()
-            )
-
-            last_collection = (
-                session.query(NewsItemDB).order_by(NewsItemDB.created_at.desc()).first()
-            )
-            last_collection_time = last_collection.created_at if last_collection else None
-
-            return Stats(
-                total_news_collected=total_collected,
-                total_news_processed=total_processed,
-                total_news_published=total_published,
-                last_collection_time=last_collection_time,
-            )
-
-    # Redis operations for caching
-    async def cache_news_item(self, key: str, data: dict[str, Any], ttl: int = 3600):
-        """Cache news item data"""
-        self.redis.setex(key, ttl, json.dumps(data, default=str))
-
-    async def get_cached_news_item(self, key: str) -> dict[str, Any] | None:
-        """Get cached news item data"""
-        cached = self.redis.get(key)
-        if cached:
-            return json.loads(cached)
-        return None
-
-    async def invalidate_cache(self, pattern: str):
-        """Invalidate cache by pattern"""
-        keys = self.redis.keys(pattern)
-        if keys:
-            self.redis.delete(*keys)
-
-    # Published news operations
-    async def save_published_news(
-        self, news_item: ProcessedNewsItem, telegram_message_id: int = None
-    ) -> str:
-        """Save published news item to database"""
-        with self.get_session() as session:
-            published_item = PublishedNewsItemDB(
-                title=news_item.title,
-                content=news_item.content,
-                url=news_item.url,
-                source=news_item.source,
-                source_type=news_item.source_type.value,
-                published_at=news_item.published_at,
-                relevance_score=news_item.relevance_score,
-                keywords=news_item.keywords or [],
-                processed=True,
-                published=True,
-                created_at=news_item.created_at,
-                image_url=news_item.image_url,
-                video_url=news_item.video_url,
-                media_type=news_item.media_type,
-                summary=news_item.summary,
-                key_points=news_item.key_points or [],
-                sentiment=news_item.sentiment,
-                importance_level=news_item.importance_level,
-                formatted_content=news_item.formatted_content,
-                tags=news_item.tags or [],
-                translated_title=news_item.translated_title,
-                translated_summary=news_item.translated_summary,
-                translated_key_points=news_item.translated_key_points or [],
-                original_language=news_item.original_language,
-                published_by="telegram_bot",
-                telegram_message_id=telegram_message_id,
-                publication_status="published",
-                views_count=0,
-                engagement_count=0,
-            )
-            session.add(published_item)
-            session.commit()
-            return str(published_item.id)
-
-    async def get_published_news(self, limit: int = 10, offset: int = 0) -> list[PublishedNewsItem]:
-        """Get published news items"""
-        with self.get_session() as session:
-            db_items = (
-                session.query(PublishedNewsItemDB)
-                .order_by(PublishedNewsItemDB.publication_created_at.desc())
+    async def get_by_status(
+        self, status: NewsStatus, limit: int = 20, offset: int = 0
+    ) -> list[ProcessedNewsItem | NewsItem]:
+        """Items in a given status. Moderation queue = get_by_status(PROCESSED)."""
+        order = (
+            NewsItemDB.published_to_channel_at.desc()
+            if status == NewsStatus.PUBLISHED
+            else NewsItemDB.created_at.desc()
+        )
+        async with self.session() as s:
+            result = await s.execute(
+                select(NewsItemDB)
+                .where(NewsItemDB.status == status)
+                .order_by(order)
                 .offset(offset)
                 .limit(limit)
-                .all()
             )
+            return [_to_model(i) for i in result.scalars().all()]
 
-            return [
-                PublishedNewsItem(
-                    id=str(item.id),
-                    title=item.title,
-                    content=item.content,
-                    url=item.url,
-                    source=item.source,
-                    source_type=SourceType(item.source_type),
-                    published_at=item.published_at,
-                    relevance_score=item.relevance_score,
-                    keywords=item.keywords or [],
-                    processed=item.processed,
-                    published=item.published,
-                    created_at=item.created_at,
-                    summary=item.summary or "",
-                    key_points=item.key_points or [],
-                    sentiment=item.sentiment,
-                    importance_level=item.importance_level,
-                    formatted_content=item.formatted_content or "",
-                    tags=item.tags or [],
-                    published_by=item.published_by,
-                    telegram_message_id=item.telegram_message_id,
-                    publication_status=item.publication_status,
-                    views_count=item.views_count,
-                    engagement_count=item.engagement_count,
+    async def get_unprocessed_news(self, limit: int = 10) -> list[NewsItem]:
+        """Collected items relevant enough to be worth AI processing"""
+        async with self.session() as s:
+            result = await s.execute(
+                select(NewsItemDB)
+                .where(
+                    NewsItemDB.status == NewsStatus.COLLECTED,
+                    NewsItemDB.relevance_score >= settings.min_relevance_score,
                 )
-                for item in db_items
-            ]
-
-    async def get_published_stats(self) -> dict[str, int]:
-        """Get published news statistics"""
-        with self.get_session() as session:
-            total_published = session.query(PublishedNewsItemDB).count()
-            today_published = (
-                session.query(PublishedNewsItemDB)
-                .filter(
-                    PublishedNewsItemDB.publication_created_at
-                    >= datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
-                )
-                .count()
+                .order_by(NewsItemDB.created_at.asc())
+                .limit(limit)
             )
-            this_week_published = (
-                session.query(PublishedNewsItemDB)
-                .filter(
-                    PublishedNewsItemDB.publication_created_at
-                    >= datetime.utcnow() - timedelta(days=7)
-                )
-                .count()
+            return [_to_model(i) for i in result.scalars().all()]
+
+    async def next_queued_item(self) -> ProcessedNewsItem | None:
+        """Oldest approved item waiting for the publisher"""
+        async with self.session() as s:
+            result = await s.execute(
+                select(NewsItemDB)
+                .where(NewsItemDB.status == NewsStatus.QUEUED)
+                .order_by(NewsItemDB.moderated_at.asc())
+                .limit(1)
             )
+            item = result.scalar_one_or_none()
+            return _to_model(item) if item else None
 
-            return {
-                "total_published": total_published,
-                "today_published": today_published,
-                "this_week_published": this_week_published,
-            }
+    async def url_exists(self, url: str) -> bool:
+        async with self.session() as s:
+            result = await s.execute(select(NewsItemDB.id).where(NewsItemDB.url == url).limit(1))
+            return result.scalar_one_or_none() is not None
 
-    async def delete_news_item(self, news_id: str) -> bool:
-        """Delete news item from database"""
-        try:
-            with self.get_session() as session:
-                # Delete from news_items table
-                news_item = session.query(NewsItemDB).filter(NewsItemDB.id == news_id).first()
-                if news_item:
-                    session.delete(news_item)
+    async def count_by_status(self, status: NewsStatus) -> int:
+        async with self.session() as s:
+            result = await s.execute(
+                select(func.count()).select_from(NewsItemDB).where(NewsItemDB.status == status)
+            )
+            return result.scalar_one()
 
-                # Delete from published_news table if exists
-                published_item = (
-                    session.query(PublishedNewsItemDB)
-                    .filter(PublishedNewsItemDB.news_id == news_id)
-                    .first()
+    async def published_in_last_hour(self) -> int:
+        """For the publisher's rate limit — counted from the DB, no in-memory state"""
+        cutoff = datetime.utcnow() - timedelta(hours=1)
+        async with self.session() as s:
+            result = await s.execute(
+                select(func.count())
+                .select_from(NewsItemDB)
+                .where(
+                    NewsItemDB.status == NewsStatus.PUBLISHED,
+                    NewsItemDB.published_to_channel_at >= cutoff,
                 )
-                if published_item:
-                    session.delete(published_item)
+            )
+            return result.scalar_one()
 
-                session.commit()
-                logger.info(f"Deleted news item from database: {news_id}")
-                return True
+    async def get_stats(self) -> Stats:
+        async with self.session() as s:
+            by_status_rows = await s.execute(
+                select(NewsItemDB.status, func.count()).group_by(NewsItemDB.status)
+            )
+            by_status = {NewsStatus(status).value: count for status, count in by_status_rows}
 
-        except Exception as e:
-            logger.error(f"Error deleting news item from database: {e}")
-            return False
+            today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+            week_start = datetime.utcnow() - timedelta(days=7)
+            published_today = await s.execute(
+                select(func.count())
+                .select_from(NewsItemDB)
+                .where(
+                    NewsItemDB.status == NewsStatus.PUBLISHED,
+                    NewsItemDB.published_to_channel_at >= today_start,
+                )
+            )
+            published_week = await s.execute(
+                select(func.count())
+                .select_from(NewsItemDB)
+                .where(
+                    NewsItemDB.status == NewsStatus.PUBLISHED,
+                    NewsItemDB.published_to_channel_at >= week_start,
+                )
+            )
+            last_created = await s.execute(select(func.max(NewsItemDB.created_at)))
+
+            return Stats(
+                total_collected=sum(by_status.values()),
+                by_status=by_status,
+                published_today=published_today.scalar_one(),
+                published_this_week=published_week.scalar_one(),
+                last_collection_time=last_created.scalar_one_or_none(),
+            )
 
 
 # Global database manager instance

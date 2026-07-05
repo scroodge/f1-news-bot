@@ -24,8 +24,6 @@ def check_required_env_vars():
         "TELEGRAM_ADMIN_ID",
         "DATABASE_URL",
         "REDIS_URL",
-        "OLLAMA_BASE_URL",
-        "OLLAMA_MODEL",
     ]
 
     missing_vars = []
@@ -53,16 +51,12 @@ def check_required_env_vars():
         print("   Получите токен у @BotFather в Telegram")
         sys.exit(1)
 
-    # Check channel ID format
+    # Check channel ID format (@username or numeric -100XXXXXXXXXX)
     channel_id = os.environ.get("TELEGRAM_CHANNEL_ID", "")
-    if (
-        not channel_id
-        or channel_id == "your_channel_id_here"
-        or not channel_id.lstrip("-").isdigit()
-    ):
+    valid_channel = channel_id.startswith("@") or channel_id.lstrip("-").isdigit()
+    if not channel_id or channel_id == "your_channel_id_here" or not valid_channel:
         print("❌ ОШИБКА: Неверный формат TELEGRAM_CHANNEL_ID")
-        print("   ID канала должен быть числом (например: -1001234567890)")
-        print("   Получите ID канала, переслав сообщение боту @userinfobot")
+        print("   Используйте @username канала или числовой ID (например: -1001234567890)")
         sys.exit(1)
 
     # Check admin ID format

@@ -71,6 +71,14 @@ class Settings(BaseSettings):
             return [item.strip() for item in value.split(",") if item.strip()]
         return value
 
+    @property
+    def database_url_async(self) -> str:
+        """DATABASE_URL with the asyncpg driver for the app's async engine"""
+        url = self.database_url
+        if url.startswith("postgresql://"):
+            return url.replace("postgresql://", "postgresql+asyncpg://", 1)
+        return url
+
 
 # F1 Keywords for content filtering (English and Russian)
 F1_KEYWORDS = [

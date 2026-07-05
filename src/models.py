@@ -18,6 +18,20 @@ class SourceType(StrEnum):
     WEB = "web"
 
 
+class NewsStatus(StrEnum):
+    """Lifecycle of a news item.
+
+    collected -> processed -> queued -> published
+                     \\-> rejected (by rules or by the admin)
+    """
+
+    COLLECTED = "collected"
+    PROCESSED = "processed"
+    QUEUED = "queued"
+    PUBLISHED = "published"
+    REJECTED = "rejected"
+
+
 class NewsItem(BaseModel):
     """News item model"""
 
@@ -30,16 +44,12 @@ class NewsItem(BaseModel):
     published_at: datetime
     relevance_score: float = 0.0
     keywords: list[str] = Field(default_factory=list)
-    processed: bool = False
-    published: bool = False
+    status: NewsStatus = NewsStatus.COLLECTED
     created_at: datetime = Field(default_factory=datetime.utcnow)
     # Media fields
     image_url: str | None = None
     video_url: str | None = None
     media_type: str | None = None  # photo, video, document
-
-    class Config:
-        use_enum_values = False
 
 
 class ProcessedNewsItem(NewsItem):
@@ -56,17 +66,10 @@ class ProcessedNewsItem(NewsItem):
     translated_summary: str | None = None
     translated_key_points: list[str] = Field(default_factory=list)
     original_language: str | None = None
-
-
-class PublishedNewsItem(ProcessedNewsItem):
-    """Published news item with publication details"""
-
-    published_at: datetime = Field(default_factory=datetime.utcnow)
-    published_by: str = "telegram_bot"  # who published it
-    telegram_message_id: int | None = None  # Telegram message ID
-    publication_status: str = "published"  # published, failed, scheduled
-    views_count: int = 0
-    engagement_count: int = 0
+    # Moderation / publication metadata
+    rejected_reason: str | None = None
+    telegram_message_id: int | None = None
+    published_to_channel_at: datetime | None = None
 
 
 class TelegramChannel(BaseModel):
@@ -93,12 +96,11 @@ class RSSFeed(BaseModel):
 class Stats(BaseModel):
     """Bot statistics"""
 
-    total_news_collected: int = 0
-    total_news_processed: int = 0
-    total_news_published: int = 0
+    total_collected: int = 0
+    by_status: dict[str, int] = Field(default_factory=dict)
+    published_today: int = 0
+    published_this_week: int = 0
     last_collection_time: datetime | None = None
-    last_processing_time: datetime | None = None
-    last_publication_time: datetime | None = None
 
 
 class ProcessingResult(BaseModel):
