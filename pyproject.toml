@@ -1,0 +1,54 @@
+[project]
+name = "f1-news-bot"
+version = "2.0.0"
+description = "F1 news gathering bot: collects, translates to Belarusian, and publishes to Telegram after moderation"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.32",
+    "aiohttp>=3.10",
+    "requests>=2.32",
+    "feedparser>=6.0.11",
+    "redis>=5.2",
+    "psycopg2-binary>=2.9.10",
+    "sqlalchemy>=2.0.36",
+    "python-dotenv>=1.0.1",
+    "pydantic>=2.9",
+    "pydantic-settings>=2.6",
+    "pytz>=2024.2",
+    "beautifulsoup4>=4.12",
+    "lxml>=5.3",
+    "python-telegram-bot>=21.6,<22",
+    "psutil>=6.1",
+    "python-dateutil>=2.9",
+    "telethon>=1.37",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3",
+    "pytest-asyncio>=0.24",
+    "ruff>=0.8",
+]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+extend-exclude = ["n8n_workflows"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM"]
+ignore = [
+    "E501",   # long lines — legacy code has many; format handles new code
+    "SIM105", # contextlib.suppress — try/except is fine
+    "B008",   # function call in default arg (FastAPI Depends pattern)
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+asyncio_mode = "auto"
+
+[tool.uv]
+package = false

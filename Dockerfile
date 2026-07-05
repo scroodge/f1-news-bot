@@ -1,43 +1,35 @@
 FROM python:3.11-slim
 
-# Set working directory
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
+
 WORKDIR /app
 
-# Install system dependencies
+# System dependencies (psycopg2, lxml builds; curl for healthcheck)
 RUN apt-get update && apt-get install -y \
     gcc \
-    g++ \
     curl \
     libpq-dev \
     libxml2-dev \
     libxslt1-dev \
-    libffi-dev \
-    libssl-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Update pip and install build tools
-RUN pip install --upgrade pip setuptools wheel
-
-# Copy requirements and install Python dependencies
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# Install dependencies first for layer caching
+COPY pyproject.toml uv.lock ./
+RUN uv sync --frozen --no-dev
 
 # Copy application code
 COPY . .
 
-# Create logs directory
 RUN mkdir -p logs
 
-# Set environment variables
+ENV PATH="/app/.venv/bin:$PATH"
 ENV PYTHONPATH=/app
 ENV PYTHONUNBUFFERED=1
 
-# Expose port
 EXPOSE 8000
 
-# Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:8000/health || exit 1
 
-# Run the application (default - can be overridden in docker-compose)
+# Default command (overridden in docker-compose)
 CMD ["python", "start_local.py"]
