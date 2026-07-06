@@ -7,6 +7,7 @@ from datetime import datetime
 
 import aiohttp
 import feedparser
+import trafilatura
 
 from ..config import settings
 from ..models import NewsItem, SourceType
@@ -28,6 +29,21 @@ class RSSCollector(BaseCollector):
         """Initialize HTTP session"""
         self.session = aiohttp.ClientSession()
         logger.info("RSS collector initialized")
+
+    async def _fetch_full_text(self, url: str) -> str | None:
+        """Try to fetch and extract full article text via trafilatura.
+        Returns the extracted text, or None on failure."""
+        try:
+            async with self.session.get(url, timeout=15) as resp:
+                if resp.status != 200:
+                    return None
+                html = await resp.text()
+            extracted = trafilatura.bare_extraction(html, url=url, with_metadata=True)
+            if extracted and extracted.text and len(extracted.text.strip()) >= 100:
+                return extracted.text.strip()
+        except Exception as e:
+            logger.debug(f"Full-text fetch failed for {url}: {e}")
+        return None
 
     async def collect_news(self) -> list[NewsItem]:
         """Collect news from RSS feeds"""
@@ -68,6 +84,13 @@ class RSSCollector(BaseCollector):
                         # Create news item
                         title = entry.get("title", "")
                         content = entry.get("summary", entry.get("description", ""))
+                        article_url = entry.get("link", "")
+
+                        # If RSS summary is short, try full-text extraction
+                        if article_url and len(content) < 300:
+                            full = await self._fetch_full_text(article_url)
+                            if full:
+                                content = full
 
                         # Extract media information
                         image_url = self._extract_image_url(entry)
@@ -77,7 +100,7 @@ class RSSCollector(BaseCollector):
                         news_item = NewsItem(
                             title=title,
                             content=content,
-                            url=entry.get("link", ""),
+                            url=article_url,
                             source=feed.feed.get("title", feed_url),
                             source_type=SourceType.RSS,
                             published_at=self._parse_date(entry.get("published", "")),

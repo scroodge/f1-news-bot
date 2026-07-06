@@ -144,7 +144,10 @@ function rawCardHtml(item) {
 // --- processed-item card (PROCESSED, translated, awaiting final review) -----
 
 function processedCardHtml(item) {
-  const hasKeyPoints = item.key_points && item.key_points.length > 0;
+  const usage = item.llm_usage || {};
+  const usageLine = usage.prompt_tokens != null
+    ? `🪙 ${usage.prompt_tokens}+${usage.completion_tokens} тokенаў`
+    : "";
   return `
   <div class="card" data-id="${item.id}">
     <div class="preview">${item.image_url ? `<img src="${esc(item.image_url)}" loading="lazy" onerror="this.remove()">` : ""}${esc(item.preview)}</div>
@@ -153,6 +156,7 @@ function processedCardHtml(item) {
       <span>⭐ ${item.importance_level}/5</span>
       <span>🎯 ${item.relevance_score.toFixed(2)}</span>
       <span>🌐 ${esc(item.original_language || "?")}</span>
+      ${usageLine ? `<span>${usageLine}</span>` : ""}
     </div>
     <div class="editor" id="edit-${item.id}">
       <label>Загаловак (BY)</label>
@@ -171,7 +175,11 @@ function processedCardHtml(item) {
       <button class="action secondary" data-act="edit">✏️</button>
       <button class="action danger" data-act="reject">❌</button>
     </div>
-    ${hasKeyPoints ? "" : '<button class="action secondary" data-act="generate-keypoints">🔑 Згенераваць ключавыя пункты</button>'}
+    <div class="row">
+      <button class="action" data-act="translate-ollama">🌐 Пераперакласці Ollama</button>
+      <button class="action secondary" data-act="translate-claude">🤖 Claude</button>
+      <button class="action secondary" data-act="generate-keypoints">🔑 Ключавыя пункты</button>
+    </div>
   </div>`;
 }
 
@@ -309,8 +317,12 @@ async function handleAction(id, act, card) {
       const updated = await call(`/items/${id}/translate?provider=${provider}`, { method: "POST" });
       toast("✅ Пераклад гатовы");
       tg?.HapticFeedback?.notificationOccurred("success");
-      // Re-render queue — item moved to processed tab
-      await renderQueue();
+      if (queueSubTab === "raw") {
+        await renderQueue();
+      } else {
+        card.outerHTML = processedCardHtml(updated);
+        editingId = null;
+      }
     } catch (e) {
       card.style.opacity = "1"; card.style.pointerEvents = "auto";
       toast("⚠️ " + e.message);

@@ -31,6 +31,7 @@ async def get_content_processor():
         _content_processor = ContentProcessor()
     return _content_processor
 
+
 logger = logging.getLogger(__name__)
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
@@ -71,17 +72,20 @@ def _serialize(item: ProcessedNewsItem | NewsItem, with_preview: bool = True) ->
         "published_at": item.published_at.isoformat(),
         "created_at": item.created_at.isoformat(),
         "published_to_channel_at": (
-            item.published_to_channel_at.isoformat() if is_processed and item.published_to_channel_at else None
+            item.published_to_channel_at.isoformat()
+            if is_processed and item.published_to_channel_at
+            else None
         ),
         "rejected_reason": item.rejected_reason if is_processed else None,
         "has_translation": is_processed,
+        "llm_usage": item.llm_usage if is_processed else None,
     }
     if with_preview:
         if is_processed:
             data["preview"] = format_channel_post(item)
         else:
             snippet = (item.content[:300] + "...") if len(item.content) > 300 else item.content
-            data["preview"] = f"📰 {item.title}\n\n{snippet}"
+            data["preview"] = f"📰 {item.title}\n\n{snippet}\n\n🔗 {item.url}"
     return data
 
 
@@ -179,8 +183,10 @@ async def translate_item(item_id: str, provider: str = "ollama"):
     item = await db_manager.get_item(item_id)
     if item is None:
         raise HTTPException(status_code=404, detail="Item not found")
-    if item.status != NewsStatus.COLLECTED:
-        raise HTTPException(status_code=409, detail="Item is not in collected state")
+    if item.status not in (NewsStatus.COLLECTED, NewsStatus.PROCESSED):
+        raise HTTPException(
+            status_code=409, detail="Item cannot be translated in its current state"
+        )
     processor = await get_content_processor()
     ok = await processor.translate_news(item_id, provider=provider)
     if not ok:
@@ -200,7 +206,9 @@ async def generate_keypoints(item_id: str):
     processor = await get_content_processor()
     ok = await processor.generate_keypoints(item_id)
     if not ok:
-        raise HTTPException(status_code=500, detail="Key-points generation failed (check Claude API)")
+        raise HTTPException(
+            status_code=500, detail="Key-points generation failed (check Claude API)"
+        )
     updated = await db_manager.get_item(item_id)
     logger.info(f"Mini App: generated key points for {item_id}")
     return _serialize(updated)

@@ -86,6 +86,9 @@ class NewsItemDB(Base):
     # Semantic dedup (bge-m3 vector as JSON; scale doesn't warrant pgvector)
     embedding: Mapped[list | None] = mapped_column(JSON, nullable=True)
 
+    # LLM token usage tracking
+    llm_usage: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+
 
 def _to_model(item: NewsItemDB) -> ProcessedNewsItem | NewsItem:
     """Convert a DB row to the appropriate pydantic model"""
@@ -119,6 +122,7 @@ def _to_model(item: NewsItemDB) -> ProcessedNewsItem | NewsItem:
         translated_summary=item.translated_summary,
         translated_key_points=item.translated_key_points or [],
         original_language=item.original_language,
+        llm_usage=item.llm_usage,
         rejected_reason=item.rejected_reason,
         telegram_message_id=item.telegram_message_id,
         published_to_channel_at=item.published_to_channel_at,
@@ -179,8 +183,10 @@ class DatabaseManager:
                 return None
             return str(db_item.id)
 
-    async def mark_processed(self, news_id: str, processed: ProcessedNewsItem) -> bool:
-        """Attach AI results and move collected -> processed"""
+    async def mark_processed(
+        self, news_id: str, processed: ProcessedNewsItem, llm_usage: dict | None = None
+    ) -> bool:
+        """Attach AI results and move collected -> processed (or re-process)"""
         async with self.session() as s:
             item = await s.get(NewsItemDB, uuid.UUID(news_id))
             if not item:
@@ -196,6 +202,8 @@ class DatabaseManager:
             item.translated_key_points = processed.translated_key_points
             item.original_language = processed.original_language
             item.status = NewsStatus.PROCESSED
+            if llm_usage is not None:
+                item.llm_usage = llm_usage
             await s.commit()
             return True
 
@@ -250,6 +258,7 @@ class DatabaseManager:
             "translated_title",
             "translated_summary",
             "key_points",
+            "llm_usage",
         }
         unknown = set(fields) - allowed
         if unknown:

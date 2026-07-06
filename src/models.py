@@ -66,6 +66,8 @@ class ProcessedNewsItem(NewsItem):
     translated_summary: str | None = None
     translated_key_points: list[str] = Field(default_factory=list)
     original_language: str | None = None
+    # LLM token usage tracking
+    llm_usage: dict | None = None
     # Moderation / publication metadata
     rejected_reason: str | None = None
     telegram_message_id: int | None = None

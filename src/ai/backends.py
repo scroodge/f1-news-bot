@@ -32,6 +32,9 @@ class LLMBackend(ABC):
 
     name: str = "base"
 
+    def __init__(self):
+        self.last_usage: dict = {}  # populated after each analyze/generate call
+
     @abstractmethod
     async def analyze(self, title: str, content: str) -> NewsAnalysis:
         """Translate + analyze one news item. Raises on failure."""
@@ -66,6 +69,7 @@ class OllamaBackend(LLMBackend):
     name = "ollama"
 
     def __init__(self):
+        super().__init__()
         self.base_url = settings.llm_base_url.rstrip("/")
         self.model = settings.llm_model
         self._session: aiohttp.ClientSession | None = None
@@ -100,6 +104,10 @@ class OllamaBackend(LLMBackend):
             response.raise_for_status()
             data = await response.json()
         raw = data.get("message", {}).get("content", "")
+        self.last_usage = {
+            "prompt_tokens": data.get("prompt_eval_count", 0),
+            "completion_tokens": data.get("eval_count", 0),
+        }
         return NewsAnalysis.model_validate_json(raw)
 
     async def check_health(self) -> bool:
@@ -122,6 +130,7 @@ class ClaudeBackend(LLMBackend):
     name = "claude"
 
     def __init__(self):
+        super().__init__()
         from anthropic import AsyncAnthropic
 
         self.client = AsyncAnthropic(api_key=settings.anthropic_api_key)
@@ -138,6 +147,10 @@ class ClaudeBackend(LLMBackend):
         )
         if response.parsed_output is None:
             raise ValueError(f"Claude returned no parseable output (stop: {response.stop_reason})")
+        self.last_usage = {
+            "prompt_tokens": response.usage.input_tokens,
+            "completion_tokens": response.usage.output_tokens,
+        }
         return response.parsed_output
 
     async def check_health(self) -> bool:
@@ -164,6 +177,10 @@ class ClaudeBackend(LLMBackend):
         )
         if response.parsed_output is None:
             raise ValueError(f"Claude key-points returned no output (stop: {response.stop_reason})")
+        self.last_usage = {
+            "prompt_tokens": response.usage.input_tokens,
+            "completion_tokens": response.usage.output_tokens,
+        }
         return response.parsed_output.key_points_be
 
     async def close(self) -> None:

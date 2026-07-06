@@ -11,7 +11,7 @@ import logging
 
 from ..config import settings
 from ..database import db_manager
-from ..models import NewsItem, ProcessedNewsItem
+from ..models import NewsItem, NewsStatus, ProcessedNewsItem
 from ..services.redis_service import redis_service
 from .backends import ClaudeBackend, EmbeddingClient, OllamaBackend
 from .dedup import find_duplicate
@@ -101,14 +101,19 @@ class ContentProcessor:
         )
 
     async def translate_news(self, item_id: str, provider: str = "ollama") -> bool:
-        """Translate a collected item using the chosen LLM backend.
-        Returns True on success, False on failure/rejection."""
+        """Translate a collected or already-translated item using the chosen LLM backend.
+        Re-translate resets all AI fields (including key_points).
+        Returns True on success, False on failure."""
         item = await db_manager.get_item(item_id)
-        if item is None or not isinstance(item, NewsItem):
-            logger.warning(f"translate_news: item {item_id} not found or not COLLECTED")
+        if item is None:
+            logger.warning(f"translate_news: item {item_id} not found")
+            return False
+        # Accept both COLLECTED (first translate) and PROCESSED (re-translate)
+        if item.status.value not in ("collected", "processed"):
+            logger.warning(f"translate_news: item {item_id} has status {item.status}")
             return False
         try:
-            if await self._check_duplicate(item):
+            if item.status == NewsStatus.COLLECTED and await self._check_duplicate(item):
                 return False
             backend = self._get_backend(provider)
             analysis = await backend.analyze_with_retries(item.title, item.content)
@@ -116,7 +121,7 @@ class ContentProcessor:
                 logger.error(f"LLM analysis failed for {item.title[:60]}...")
                 return False
             processed = self._build_processed_item(item, analysis)
-            await db_manager.mark_processed(item.id, processed)
+            await db_manager.mark_processed(item.id, processed, llm_usage=backend.last_usage)
             await redis_service.signal_new_pending()
             logger.info(f"Translated ({provider}): {analysis.title_be[:60]}...")
             return True
@@ -136,7 +141,9 @@ class ContentProcessor:
             summary_be = item.translated_summary or item.summary
             backend = self._get_backend("claude")
             key_points = await backend.generate_key_points(title_be, summary_be)
-            await db_manager.update_fields(item_id, key_points=key_points)
+            await db_manager.update_fields(
+                item_id, key_points=key_points, llm_usage=backend.last_usage
+            )
             logger.info(f"Key points generated for {title_be[:60]}...")
             return True
         except Exception as e:
