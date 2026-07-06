@@ -92,6 +92,7 @@ def _serialize(item: ProcessedNewsItem | NewsItem, with_preview: bool = True) ->
 class EditRequest(BaseModel):
     title_be: str | None = Field(default=None, max_length=300)
     summary: str | None = Field(default=None, max_length=2000)
+    key_points: list[str] | None = None
     tags: list[str] | None = None
     importance_level: int | None = Field(default=None, ge=1, le=5)
 
@@ -145,6 +146,8 @@ async def edit_item(item_id: str, edit: EditRequest):
     if edit.summary is not None:
         fields["summary"] = edit.summary.strip()
         fields["translated_summary"] = edit.summary.strip()
+    if edit.key_points is not None:
+        fields["key_points"] = edit.key_points
     if edit.tags is not None:
         fields["tags"] = [t.strip().lstrip("#") for t in edit.tags if t.strip()]
     if edit.importance_level is not None:

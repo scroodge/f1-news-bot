@@ -163,11 +163,13 @@ function processedCardHtml(item) {
       <input name="title_be" value="${esc(item.title_be || "")}">
       <label>Тэкст</label>
       <textarea name="summary">${esc(item.summary || "")}</textarea>
+      <label>🔑 Галоўнае (радок на пункт)</label>
+      <textarea name="key_points" rows="3">${esc((item.key_points || []).join("\n"))}</textarea>
       <label>Тэгі (праз коску)</label>
       <input name="tags" value="${esc((item.tags || []).join(", "))}">
       <div class="row">
         <button class="action" data-act="save">💾 Захаваць</button>
-        <button class="action secondary" data-act="generate-keypoints">🔑 Галоўнае</button>
+        <button class="action secondary" data-act="generate-keypoints">🔑 Згенераваць</button>
         <button class="action secondary" data-act="cancel">Адмена</button>
       </div>
     </div>
@@ -287,9 +289,11 @@ async function handleAction(id, act, card) {
   }
 
   if (act === "save") {
+    const kpRaw = editor.querySelector('[name="key_points"]').value;
     const body = {
       title_be: editor.querySelector('[name="title_be"]').value,
       summary: editor.querySelector('[name="summary"]').value,
+      key_points: kpRaw.split("\n").map(t => t.trim()).filter(Boolean),
       tags: editor.querySelector('[name="tags"]').value.split(",").map(t => t.trim()).filter(Boolean),
     };
     const updated = await call(`/items/${id}/edit`, { method: "POST", body: JSON.stringify(body) });
