@@ -178,6 +178,13 @@ async def get_raw_queue(page: int = 0, page_size: int = 10):
     }
 
 
+@api.post("/queue/raw/reject-all")
+async def reject_all_raw():
+    count = await db_manager.reject_all_collected()
+    logger.info(f"Mini App: bulk-rejected {count} collected items")
+    return {"ok": True, "count": count}
+
+
 # --- admin-triggered AI actions ----------------------------------------------
 
 

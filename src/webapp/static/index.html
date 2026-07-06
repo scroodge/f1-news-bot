@@ -219,6 +219,7 @@ async function renderQueue() {
       if (!rawData.items.length) {
         html += `<div class="empty">🏁 Новых навін няма</div>`;
       } else {
+        html += `<button class="action danger" data-act="reject-all-raw" style="margin-bottom:6px">🗑 Выдаліць усе (${rawData.total})</button>`;
         html += rawData.items.map(rawCardHtml).join("");
       }
     } else {
@@ -391,10 +392,20 @@ document.getElementById("content").addEventListener("click", (e) => {
 document.getElementById("content").addEventListener("click", async (e) => {
   const button = e.target.closest("button[data-act]");
   if (!button) return;
-  const card = button.closest(".card");
-  if (!card) return;
   button.disabled = true;
-  try { await handleAction(card.dataset.id, button.dataset.act, card); }
+  try {
+    if (button.dataset.act === "reject-all-raw") {
+      if (!confirm("Выдаліць усе новыя навіны?")) return;
+      const result = await call("/queue/raw/reject-all", { method: "POST" });
+      toast(`🗑 Выдалена ${result.count} навін`);
+      tg?.HapticFeedback?.notificationOccurred("warning");
+      await renderQueue();
+    } else {
+      const card = button.closest(".card");
+      if (!card) return;
+      await handleAction(card.dataset.id, button.dataset.act, card);
+    }
+  }
   catch (err) { toast("⚠️ " + err.message); }
   finally { button.disabled = false; }
 });

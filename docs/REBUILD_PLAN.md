@@ -92,6 +92,9 @@ each phase leaves the bot working.
 - Pluggable LLM backend behind one interface keyed by `LLM_PROVIDER`:
   `ollama` (default, remote server) and optionally `claude` for
   higher-quality Belarusian translation.
+  ✅ **Done**: `src/ai/backends.py` with `OllamaBackend` + `ClaudeBackend`,
+  both expose `last_usage` for token tracking. Translation uses either
+  provider; key points always use Claude.
 - **Semantic dedup**: embeddings via `bge-m3:latest` on the remote server to
   catch the same story from multiple sources.
   📐 **Calibration data (2026-07-06, title-only probes):** same story EN↔RU
@@ -133,28 +136,22 @@ source):
 
 ## Phase 3 — Admin panel as a Telegram Mini App
 
-The moderation UI moves out of inline-keyboard chat into a **Telegram Mini
+**Status: IMPLEMENTED** — the Mini App is the primary moderation interface.
+
+The moderation UI moved from inline-keyboard chat into a **Telegram Mini
 App** (web app opened from the bot). The bot keeps only notifications
 ("5 new items awaiting review") with a button that opens the Mini App.
 
-- **Backend**: the existing FastAPI app grows an `/admin` API — queue list,
-  item detail, edit (title/summary/text), approve → publish, reject, source
-  health, published history/stats. Auth = Telegram `initData` HMAC validation
-  (bot token as key) + admin-ID allowlist; no separate login.
-- **Frontend**: small SPA (single-page, no heavy framework needed — Vite +
-  preact/vanilla is enough) using the Telegram WebApp JS SDK for theme
-  colors, haptics, and the main button. Card per news item showing the post
-  **exactly as it will look in the channel** (media preview included), with
-  approve / edit / reject.
-- **Publish flow**: admin taps approve in the Mini App → API marks item
-  `queued` → publisher worker posts to the channel → item becomes
-  `published` with the message id.
-- **Hosting**: served by the same FastAPI process; on Contabo exposed via the
-  existing nginx with TLS (Mini Apps require HTTPS — reuse the
-  `bot.mykid.life`-style setup already on that VPS). For local testing use an
-  HTTPS tunnel (cloudflared/ngrok) since Telegram won't load plain-HTTP apps.
-- The old `bot.py` moderation commands can be retired once the Mini App
-  covers the flow — the bot shrinks to notifications + publishing.
+- Backend: FastAPI `/admin/api` endpoints — queue (raw + processed), item
+  translate (Ollama/Claude), generate key points (Claude), edit, approve →
+  publish, reject, stats. Auth = Telegram `initData` HMAC validation.
+- Frontend: single-file vanilla JS/HTML (`static/index.html`) with
+  Telegram WebApp SDK. Two sub-tabs: "Новыя" (raw) and "На модэрацыі"
+  (processed). Admin flow: 🌐 translate → ✏️ edit + 🔑 key points → ✅ approve.
+  Token usage (`llm_usage`) shown in card meta.
+- Publishing: admin approves → `queued` → bot publisher loop posts to channel.
+- The old bot moderation commands (inline keyboards) are unused — the bot
+  only sends notifications with a "Open Mini App" button.
 
 ## Phase 3b — Cool features
 
@@ -194,7 +191,7 @@ App** (web app opened from the bot). The bot keeps only notifications
 | Channel language | **Decided**: Belarusian — everything not already Belarusian gets translated by the LLM |
 | Admin UI | **Decided**: Telegram Mini App (bot keeps only notifications + publishing) |
 | New sources | **Decided**: add website scrapers (formula1.com, autosport, motorsport.com, …) alongside RSS/Telegram |
-| LLM backend | **Decided**: remote Ollama (`dev.offtech.by:8444/ollama`, qwen2.5:14b, bge-m3 embeddings), pluggable interface keeps a Claude API option |
+| LLM backend | **Decided**: remote Ollama (`dev.offtech.by:8444/ollama`, qwen2.5:14b, bge-m3 embeddings), pluggable interface keeps a Claude API option. ✅ Claude backend implemented (`src/ai/backends.py`) — key points always use Claude, translation can use either |
 | DB | **Decided**: PostgreSQL on Contabo from the beginning; local dev connects remotely |
 | Hosting | **Decided**: test locally → deploy to Contabo VPS |
 | Bot framework | Open: python-telegram-bot v21+ vs aiogram 3 — leaning PTB upgrade (less churn) |

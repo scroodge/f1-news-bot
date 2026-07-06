@@ -308,10 +308,24 @@ class DatabaseManager:
             return True
 
     async def reject_all_pending(self) -> int:
-        """Reject everything awaiting moderation. Returns count."""
+        """Reject everything awaiting moderation (PROCESSED). Returns count."""
         async with self.session() as s:
             result = await s.execute(
                 select(NewsItemDB).where(NewsItemDB.status == NewsStatus.PROCESSED)
+            )
+            items = result.scalars().all()
+            for item in items:
+                item.status = NewsStatus.REJECTED
+                item.rejected_reason = "bulk-rejected by admin"
+                item.moderated_at = datetime.utcnow()
+            await s.commit()
+            return len(items)
+
+    async def reject_all_collected(self) -> int:
+        """Reject all collected (untouched) items. Returns count."""
+        async with self.session() as s:
+            result = await s.execute(
+                select(NewsItemDB).where(NewsItemDB.status == NewsStatus.COLLECTED)
             )
             items = result.scalars().all()
             for item in items:
