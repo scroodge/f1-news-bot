@@ -1,25 +1,19 @@
 """
-Content processor: the collected -> processed/rejected pipeline step.
+Content processor: admin-triggered translate + key-points generation.
 
-Every item goes through the LLM (the channel publishes in Belarusian, so
-Russian and English sources alike get translated — the old "Russian skips
-AI" fast path is gone). Steps per item:
-
-1. Embed title+content (bge-m3) and reject semantic duplicates of recent items.
-2. One structured LLM call -> NewsAnalysis (Belarusian title/summary/points/tags).
-3. Rule-based moderation; auto-reject spam/low quality.
-4. Survivors become PROCESSED and wait for the admin.
+No auto-processing loop. Items stay COLLECTED until the admin explicitly
+clicks "Translate" in the Mini App — then the chosen LLM backend (Ollama
+or Claude) produces the Belarusian translation. A separate action triggers
+Claude to generate the 🔑 Галоўнае: key points from translated text.
 """
 
-import asyncio
 import logging
 
 from ..config import settings
 from ..database import db_manager
-from ..models import NewsItem, ProcessedNewsItem, ProcessingResult
-from ..moderator.content_moderator import ContentModerator
+from ..models import NewsItem, ProcessedNewsItem
 from ..services.redis_service import redis_service
-from .backends import EmbeddingClient, LLMBackend, get_llm_backend
+from .backends import ClaudeBackend, EmbeddingClient, OllamaBackend
 from .dedup import find_duplicate
 from .schemas import NewsAnalysis
 
@@ -27,19 +21,26 @@ logger = logging.getLogger(__name__)
 
 
 class ContentProcessor:
-    """AI-powered content processor"""
+    """Admin-triggered content processing (translate + key points)"""
 
-    def __init__(self, backend: LLMBackend | None = None):
-        self.backend = backend or get_llm_backend()
+    def __init__(self):
         self.embeddings = EmbeddingClient()
-        self.moderator = ContentModerator()
+        self._ollama: OllamaBackend | None = None
+        self._claude: ClaudeBackend | None = None
 
     async def initialize(self) -> bool:
-        if not await self.backend.check_health():
-            logger.error(f"LLM backend '{self.backend.name}' is not available")
-            return False
-        logger.info(f"Content processor initialized (backend: {self.backend.name})")
+        # Just check embeddings backend is reachable
+        logger.info("Content processor initialized")
         return True
+
+    def _get_backend(self, provider: str = "ollama") -> OllamaBackend | ClaudeBackend:
+        if provider == "claude":
+            if self._claude is None:
+                self._claude = ClaudeBackend()
+            return self._claude
+        if self._ollama is None:
+            self._ollama = OllamaBackend()
+        return self._ollama
 
     def _detect_language(self, text: str) -> str:
         """Coarse source-language detection (stored as original_language)"""
@@ -48,7 +49,6 @@ class ContentProcessor:
         if letters == 0:
             return "unknown"
         if cyrillic / letters > 0.3:
-            # Belarusian-specific letters distinguish be from ru
             return "be" if any(ch in "ўЎіІ" for ch in text) else "ru"
         return "en"
 
@@ -59,9 +59,8 @@ class ContentProcessor:
             return False
         embedding = await self.embeddings.embed(f"{news_item.title}\n{news_item.content[:1500]}")
         if embedding is None:
-            return False  # embeddings down — degrade to URL-only dedup
+            return False
         await db_manager.set_embedding(news_item.id, embedding)
-
         existing = await db_manager.get_recent_embeddings(
             days=settings.dedup_lookback_days, exclude_id=news_item.id
         )
@@ -90,7 +89,6 @@ class ContentProcessor:
             image_url=news_item.image_url,
             video_url=news_item.video_url,
             media_type=news_item.media_type,
-            # Belarusian analysis
             summary=analysis.summary_be,
             key_points=analysis.key_points_be,
             sentiment=analysis.sentiment,
@@ -102,62 +100,53 @@ class ContentProcessor:
             original_language=self._detect_language(f"{news_item.title} {news_item.content}"),
         )
 
-    async def process_single_news(self, news_item: NewsItem) -> ProcessingResult:
-        """Process one item and store the outcome in the DB"""
+    async def translate_news(self, item_id: str, provider: str = "ollama") -> bool:
+        """Translate a collected item using the chosen LLM backend.
+        Returns True on success, False on failure/rejection."""
+        item = await db_manager.get_item(item_id)
+        if item is None or not isinstance(item, NewsItem):
+            logger.warning(f"translate_news: item {item_id} not found or not COLLECTED")
+            return False
         try:
-            if await self._check_duplicate(news_item):
-                return ProcessingResult(success=False, error_message="duplicate")
-
-            analysis = await self.backend.analyze_with_retries(news_item.title, news_item.content)
+            if await self._check_duplicate(item):
+                return False
+            backend = self._get_backend(provider)
+            analysis = await backend.analyze_with_retries(item.title, item.content)
             if analysis is None:
-                logger.error(f"LLM analysis failed: {news_item.title[:60]}...")
-                return ProcessingResult(success=False, error_message="LLM analysis failed")
-
-            processed = self._build_processed_item(news_item, analysis)
-            await db_manager.mark_processed(news_item.id, processed)
-
-            # Rule-based moderation: auto-reject spam/low quality before a
-            # human ever sees it. Approved items stay PROCESSED for the admin.
-            moderation = self.moderator.moderate_news_item(processed)
-            if not moderation["approved"]:
-                reason = "; ".join(moderation["reasons"]) or "rejected by content rules"
-                await db_manager.reject(news_item.id, reason)
-                logger.info(f"Auto-rejected: {news_item.title[:60]}... ({reason})")
-            else:
-                await redis_service.signal_new_pending()
-                logger.info(f"Awaiting moderation: {analysis.title_be[:60]}...")
-
-            return ProcessingResult(success=True, news_item=processed)
-
+                logger.error(f"LLM analysis failed for {item.title[:60]}...")
+                return False
+            processed = self._build_processed_item(item, analysis)
+            await db_manager.mark_processed(item.id, processed)
+            await redis_service.signal_new_pending()
+            logger.info(f"Translated ({provider}): {analysis.title_be[:60]}...")
+            return True
         except Exception as e:
-            logger.error(f"Error processing news item: {e}", exc_info=True)
-            return ProcessingResult(success=False, error_message=str(e))
+            logger.error(f"translate_news failed: {e}", exc_info=True)
+            return False
 
-    async def process_news_batch(self, news_items: list[NewsItem]) -> list[ProcessingResult]:
-        results = []
-        for news_item in news_items:
-            results.append(await self.process_single_news(news_item))
-            await asyncio.sleep(1)  # be gentle with the LLM server
-        return results
-
-    async def process_pending_news(self, limit: int = 10) -> list[ProcessingResult]:
-        """Process pending news items from the database"""
+    async def generate_keypoints(self, item_id: str) -> bool:
+        """Generate 🔑 Галоўнае: key points via Claude for a translated item.
+        Returns True on success."""
+        item = await db_manager.get_item(item_id)
+        if item is None or not isinstance(item, ProcessedNewsItem):
+            logger.warning(f"generate_keypoints: item {item_id} not found or not translated")
+            return False
         try:
-            pending = await db_manager.get_unprocessed_news(limit)
-            if not pending:
-                logger.info("No pending news items to process")
-                return []
-
-            logger.info(f"Processing {len(pending)} pending news items")
-            results = await self.process_news_batch(pending)
-            ok = sum(1 for r in results if r.success)
-            logger.info(f"Processing completed: {ok} successful, {len(results) - ok} failed")
-            return results
+            title_be = item.translated_title or item.title
+            summary_be = item.translated_summary or item.summary
+            backend = self._get_backend("claude")
+            key_points = await backend.generate_key_points(title_be, summary_be)
+            await db_manager.update_fields(item_id, key_points=key_points)
+            logger.info(f"Key points generated for {title_be[:60]}...")
+            return True
         except Exception as e:
-            logger.error(f"Error processing pending news: {e}")
-            return []
+            logger.error(f"generate_keypoints failed: {e}", exc_info=True)
+            return False
 
     async def close(self):
-        await self.backend.close()
+        if self._ollama:
+            await self._ollama.close()
+        if self._claude:
+            await self._claude.close()
         await self.embeddings.close()
         logger.info("Content processor closed")

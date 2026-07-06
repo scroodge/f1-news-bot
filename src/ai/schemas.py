@@ -53,6 +53,26 @@ class NewsAnalysis(BaseModel):
         return value[:5]
 
 
+class KeyPointsAnalysis(BaseModel):
+    """Belarusian key points extracted from already-translated content"""
+
+    key_points_be: list[str] = Field(
+        default_factory=list,
+        description="1-3 галоўныя факты па-беларуску, кожны адным кароткім сказам",
+    )
+
+
+KEY_POINTS_PROMPT = """Ты — рэдактар беларускамоўнага навінавага канала пра Формулу-1.
+
+На аснове загалоўка і кароткага зместу навіны вылучы 1-3 галоўныя факты па-беларуску.
+Кожны факт — адзін кароткі сказ.
+
+Загаловак: {title_be}
+
+Змест:
+{summary_be}"""
+
+
 ANALYSIS_PROMPT = """Ты — рэдактар беларускамоўнага навінавага канала пра Формулу-1.
 
 Прааналізуй навіну ніжэй і падрыхтуй яе для публікацыі ПА-БЕЛАРУСКУ:

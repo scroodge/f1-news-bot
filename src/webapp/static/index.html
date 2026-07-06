@@ -32,6 +32,12 @@
     background: var(--card); color: var(--fg); font-size: 13px; cursor: pointer;
   }
   .tab.active { background: var(--btn); color: var(--btn-fg); }
+  .sub-tabs { display: flex; gap: 4px; margin-top: 6px; padding: 0 14px; }
+  .sub-tab {
+    flex: 1; padding: 5px 4px; border: 0; border-radius: 7px; text-align: center;
+    background: var(--card); color: var(--hint); font-size: 12px; cursor: pointer;
+  }
+  .sub-tab.active { background: var(--btn); color: var(--btn-fg); font-weight: 600; }
   main { padding: 12px 14px; display: grid; gap: 12px; }
   .card {
     background: var(--card); border-radius: 14px; padding: 12px;
@@ -92,6 +98,8 @@ tg?.ready(); tg?.expand();
 const AUTH = tg?.initData ? { "Authorization": "tma " + tg.initData } : {};
 const API = "/admin/api";
 let activeTab = "queue";
+let queueSubTab = "raw"; // "raw" or "processed"
+let editingId = null; // track which item has its editor open
 
 function toast(msg) {
   const el = document.getElementById("toast");
@@ -113,9 +121,30 @@ async function call(path, options = {}) {
 
 const esc = (s) => (s || "").replace(/[&<>"]/g, c => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;" }[c]));
 
-// --- queue -----------------------------------------------------------------
+// --- raw-item card (COLLECTED, no translation yet) --------------------------
 
-function cardHtml(item) {
+function rawCardHtml(item) {
+  return `
+  <div class="card" data-id="${item.id}">
+    <div class="preview">${item.image_url ? `<img src="${esc(item.image_url)}" loading="lazy" onerror="this.remove()">` : ""}${esc(item.preview)}</div>
+    <div class="meta">
+      <span>📥 ${esc(item.source)}</span>
+      <span>🎯 ${item.relevance_score.toFixed(2)}</span>
+      <span>🌐 ${esc(item.original_language || "?")}</span>
+      <span>🆕 ${esc(item.status)}</span>
+    </div>
+    <div class="row">
+      <button class="action" data-act="translate-ollama">🌐 Перакласці Ollama</button>
+      <button class="action secondary" data-act="translate-claude">🤖 Claude</button>
+      <button class="action danger" data-act="reject">❌</button>
+    </div>
+  </div>`;
+}
+
+// --- processed-item card (PROCESSED, translated, awaiting final review) -----
+
+function processedCardHtml(item) {
+  const hasKeyPoints = item.key_points && item.key_points.length > 0;
   return `
   <div class="card" data-id="${item.id}">
     <div class="preview">${item.image_url ? `<img src="${esc(item.image_url)}" loading="lazy" onerror="this.remove()">` : ""}${esc(item.preview)}</div>
@@ -137,50 +166,68 @@ function cardHtml(item) {
         <button class="action secondary" data-act="cancel">Адмена</button>
       </div>
     </div>
-    <div class="row" id="actions-${item.id}">
+    <div class="row">
       <button class="action" data-act="approve">✅ Апублікаваць</button>
       <button class="action secondary" data-act="edit">✏️</button>
       <button class="action danger" data-act="reject">❌</button>
     </div>
+    ${hasKeyPoints ? "" : '<button class="action secondary" data-act="generate-keypoints">🔑 Згенераваць ключавыя пункты</button>'}
   </div>`;
+}
+
+// --- queue rendering ---------------------------------------------------------
+
+let rawQueueData = null;
+let processedQueueData = null;
+
+function renderSubTabs() {
+  const el = document.getElementById("content");
+  const subHtml = `
+    <div class="sub-tabs">
+      <button class="sub-tab ${queueSubTab === "raw" ? "active" : ""}" data-subtab="raw">🆕 Новыя${rawQueueData ? ` (${rawQueueData.total})` : ""}</button>
+      <button class="sub-tab ${queueSubTab === "processed" ? "active" : ""}" data-subtab="processed">⏳ На модэрацыі${processedQueueData ? ` (${processedQueueData.total})` : ""}</span></button>
+    </div>`;
+  return subHtml;
 }
 
 async function renderQueue() {
   const el = document.getElementById("content");
-  const data = await call("/queue");
-  document.getElementById("queue-count").textContent = data.total ? `(${data.total})` : "";
-  if (!data.items.length) {
-    el.innerHTML = `<div class="empty">🏁 Чарга пустая — усё прамадэравана!</div>`;
-    return;
-  }
-  el.innerHTML = data.items.map(cardHtml).join("");
-}
+  try {
+    const [rawData, processedData] = await Promise.all([
+      call("/queue/raw"),
+      call("/queue"),
+    ]);
+    rawQueueData = rawData;
+    processedQueueData = processedData;
 
-async function handleAction(id, act, card) {
-  const editor = card.querySelector(".editor");
-  if (act === "edit") { editor.classList.toggle("open"); return; }
-  if (act === "cancel") { editor.classList.remove("open"); return; }
+    const totalCount = (rawData.total || 0) + (processedData.total || 0);
+    document.getElementById("queue-count").textContent = totalCount ? `(${totalCount})` : "";
 
-  if (act === "save") {
-    const body = {
-      title_be: editor.querySelector('[name="title_be"]').value,
-      summary: editor.querySelector('[name="summary"]').value,
-      tags: editor.querySelector('[name="tags"]').value.split(",").map(t => t.trim()).filter(Boolean),
-    };
-    const updated = await call(`/items/${id}/edit`, { method: "POST", body: JSON.stringify(body) });
-    card.outerHTML = cardHtml(updated);
-    toast("💾 Захавана");
-    tg?.HapticFeedback?.notificationOccurred("success");
-    return;
-  }
+    let html = renderSubTabs();
 
-  if (act === "approve" || act === "reject") {
-    if (act === "reject" && !confirm("Адхіліць гэтую навіну?")) return;
-    await call(`/items/${id}/${act}`, { method: "POST" });
-    card.style.opacity = ".35"; card.style.pointerEvents = "none";
-    toast(act === "approve" ? "✅ У чарзе на публікацыю" : "❌ Адхілена");
-    tg?.HapticFeedback?.notificationOccurred(act === "approve" ? "success" : "warning");
-    setTimeout(renderQueue, 600);
+    if (queueSubTab === "raw") {
+      if (!rawData.items.length) {
+        html += `<div class="empty">🏁 Новых навін няма</div>`;
+      } else {
+        html += rawData.items.map(rawCardHtml).join("");
+      }
+    } else {
+      if (!processedData.items.length) {
+        html += `<div class="empty">🏁 Чарга мадэрацыі пустая — усё прамадэравана!</div>`;
+      } else {
+        html += processedData.items.map(processedCardHtml).join("");
+      }
+    }
+
+    el.innerHTML = html;
+
+    // Restore editor state after re-render
+    if (editingId) {
+      const editor = document.getElementById("edit-" + editingId);
+      if (editor) editor.classList.add("open");
+    }
+  } catch (e) {
+    el.innerHTML = `<div class="empty">⚠️ ${esc(e.message)}</div>`;
   }
 }
 
@@ -215,6 +262,77 @@ async function renderStats() {
     </div>`;
 }
 
+// --- action handlers ---------------------------------------------------------
+
+async function handleAction(id, act, card) {
+  const editor = card.querySelector(".editor");
+
+  if (act === "edit") {
+    editor.classList.toggle("open");
+    editingId = editor.classList.contains("open") ? id : null;
+    return;
+  }
+  if (act === "cancel") {
+    editor.classList.remove("open");
+    editingId = null;
+    return;
+  }
+
+  if (act === "save") {
+    const body = {
+      title_be: editor.querySelector('[name="title_be"]').value,
+      summary: editor.querySelector('[name="summary"]').value,
+      tags: editor.querySelector('[name="tags"]').value.split(",").map(t => t.trim()).filter(Boolean),
+    };
+    const updated = await call(`/items/${id}/edit`, { method: "POST", body: JSON.stringify(body) });
+    card.outerHTML = processedCardHtml(updated);
+    toast("💾 Захавана");
+    tg?.HapticFeedback?.notificationOccurred("success");
+    return;
+  }
+
+  if (act === "approve" || act === "reject") {
+    if (act === "reject" && !confirm("Адхіліць гэтую навіну?")) return;
+    await call(`/items/${id}/${act}`, { method: "POST" });
+    card.style.opacity = ".35"; card.style.pointerEvents = "none";
+    toast(act === "approve" ? "✅ У чарзе на публікацыю" : "❌ Адхілена");
+    tg?.HapticFeedback?.notificationOccurred(act === "approve" ? "success" : "warning");
+    setTimeout(renderQueue, 600);
+    return;
+  }
+
+  if (act === "translate-ollama" || act === "translate-claude") {
+    const provider = act === "translate-claude" ? "claude" : "ollama";
+    card.style.opacity = ".5"; card.style.pointerEvents = "none";
+    card.querySelector(".preview").textContent = "⏳ Пераклад...";
+    try {
+      const updated = await call(`/items/${id}/translate?provider=${provider}`, { method: "POST" });
+      toast("✅ Пераклад гатовы");
+      tg?.HapticFeedback?.notificationOccurred("success");
+      // Re-render queue — item moved to processed tab
+      await renderQueue();
+    } catch (e) {
+      card.style.opacity = "1"; card.style.pointerEvents = "auto";
+      toast("⚠️ " + e.message);
+    }
+    return;
+  }
+
+  if (act === "generate-keypoints") {
+    card.style.opacity = ".5"; card.style.pointerEvents = "none";
+    try {
+      const updated = await call(`/items/${id}/generate-keypoints`, { method: "POST" });
+      card.outerHTML = processedCardHtml(updated);
+      toast("🔑 Ключавыя пункты згенераваны");
+      tg?.HapticFeedback?.notificationOccurred("success");
+    } catch (e) {
+      card.style.opacity = "1"; card.style.pointerEvents = "auto";
+      toast("⚠️ " + e.message);
+    }
+    return;
+  }
+}
+
 // --- wiring ------------------------------------------------------------------
 
 const renderers = { queue: renderQueue, published: renderPublished, stats: renderStats };
@@ -232,10 +350,21 @@ document.querySelector(".tabs").addEventListener("click", (e) => {
   if (tab) show(tab);
 });
 
+// Sub-tab switching (raw / processed)
+document.getElementById("content").addEventListener("click", (e) => {
+  const subTab = e.target.closest(".sub-tab")?.dataset.subtab;
+  if (subTab && activeTab === "queue") {
+    queueSubTab = subTab;
+    renderQueue();
+  }
+});
+
+// Button actions
 document.getElementById("content").addEventListener("click", async (e) => {
   const button = e.target.closest("button[data-act]");
   if (!button) return;
   const card = button.closest(".card");
+  if (!card) return;
   button.disabled = true;
   try { await handleAction(card.dataset.id, button.dataset.act, card); }
   catch (err) { toast("⚠️ " + err.message); }
@@ -243,7 +372,9 @@ document.getElementById("content").addEventListener("click", async (e) => {
 });
 
 show("queue");
-setInterval(() => { if (activeTab === "queue") renderQueue().catch(() => {}); }, 60000);
+setInterval(() => {
+  if (activeTab === "queue") renderQueue().catch(() => {});
+}, 60000);
 </script>
 </body>
 </html>

@@ -23,6 +23,13 @@ def utc_now():
     return datetime.utcnow().replace(tzinfo=pytz.UTC)
 
 
+def to_naive_utc(dt: datetime) -> datetime:
+    """Normalize any datetime to naive UTC (DB columns are timezone-naive)"""
+    if dt.tzinfo is not None:
+        return dt.astimezone(pytz.UTC).replace(tzinfo=None)
+    return dt
+
+
 def local_now():
     """Get current local time"""
     return datetime.now(get_local_timezone())

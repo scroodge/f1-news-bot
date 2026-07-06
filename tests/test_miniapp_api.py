@@ -72,6 +72,30 @@ async def test_queue_returns_pending_items_with_preview(client):
     assert "Крыніца" in item["preview"]
 
 
+async def test_raw_queue_returns_collected_items(client):
+    http, db = client
+    # Insert a collected (untranslated) item
+    await db.save_news_item(
+        NewsItem(
+            title="Breaking News",
+            content="Some F1 content here.",
+            url="https://example.com/raw",
+            source="test",
+            source_type=SourceType.RSS,
+            published_at=datetime(2026, 7, 5, 12, 0),
+            relevance_score=0.8,
+        )
+    )
+    response = await http.get("/admin/api/queue/raw")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["total"] == 1
+    item = data["items"][0]
+    assert item["has_translation"] is False
+    assert item["status"] == "collected"
+    assert "has_translation" in item
+
+
 async def test_approve_moves_to_queued(client):
     http, db = client
     item_id = await seed_processed(db)

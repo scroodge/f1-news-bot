@@ -1,9 +1,10 @@
 """
 Main application entry point for F1 News Bot.
 
-Runs the collection + AI-processing loops and exposes the HTTP API.
-Moderation and publication happen in the separate Telegram bot process,
-reading the same PostgreSQL database.
+Runs the collection loop and exposes the HTTP API (including the Mini App
+admin panel). AI processing (translation, key points) is triggered by the
+admin from the Mini App — no auto-processing loop. Moderation and publication
+happen in the separate Telegram bot process.
 """
 
 import asyncio
@@ -39,7 +40,6 @@ class F1NewsBotApp:
         self.content_processor = ContentProcessor()
 
         self.collection_task: asyncio.Task | None = None
-        self.processing_task: asyncio.Task | None = None
         self.monitoring_task: asyncio.Task | None = None
 
         self._setup_routes()
@@ -69,12 +69,6 @@ class F1NewsBotApp:
             """Trigger news collection"""
             background_tasks.add_task(self._collect_news_background)
             return {"status": "success", "message": "News collection started"}
-
-        @self.app.post("/api/process-news")
-        async def process_news(background_tasks: BackgroundTasks):
-            """Trigger news processing"""
-            background_tasks.add_task(self._process_news_background)
-            return {"status": "success", "message": "News processing started"}
 
         @self.app.get("/api/stats")
         async def get_stats():
@@ -131,24 +125,14 @@ class F1NewsBotApp:
         except Exception as e:
             logger.error(f"Error in news collection: {e}")
 
-    async def _process_news_background(self):
-        try:
-            logger.info("Starting news processing...")
-            results = await self.content_processor.process_pending_news()
-            logger.info(f"Processed {len(results)} news items")
-        except Exception as e:
-            logger.error(f"Error in news processing: {e}")
-
     async def start_background_tasks(self):
         """Start background loops"""
         if not await db_manager.ping():
             raise RuntimeError(
                 "Database unreachable — check DATABASE_URL (and the SSH tunnel in local dev)"
             )
-        await self.content_processor.initialize()
 
         self.collection_task = asyncio.create_task(self._collection_loop())
-        self.processing_task = asyncio.create_task(self._processing_loop())
         self.monitoring_task = asyncio.create_task(self._monitoring_loop())
 
         logger.info("Background tasks started")
@@ -160,15 +144,6 @@ class F1NewsBotApp:
                 await asyncio.sleep(settings.check_interval_minutes * 60)
             except Exception as e:
                 logger.error(f"Error in collection loop: {e}")
-                await asyncio.sleep(60)
-
-    async def _processing_loop(self):
-        while True:
-            try:
-                await self._process_news_background()
-                await asyncio.sleep(300)  # every 5 minutes
-            except Exception as e:
-                logger.error(f"Error in processing loop: {e}")
                 await asyncio.sleep(60)
 
     async def _monitoring_loop(self):
@@ -184,7 +159,7 @@ class F1NewsBotApp:
         """Graceful shutdown"""
         logger.info("Starting graceful shutdown...")
 
-        tasks = [self.collection_task, self.processing_task, self.monitoring_task]
+        tasks = [self.collection_task, self.monitoring_task]
         for task in tasks:
             if task and not task.done():
                 task.cancel()

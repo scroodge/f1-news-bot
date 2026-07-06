@@ -20,7 +20,7 @@ from abc import ABC, abstractmethod
 import aiohttp
 
 from ..config import settings
-from .schemas import ANALYSIS_PROMPT, NewsAnalysis
+from .schemas import ANALYSIS_PROMPT, KEY_POINTS_PROMPT, KeyPointsAnalysis, NewsAnalysis
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +35,10 @@ class LLMBackend(ABC):
     @abstractmethod
     async def analyze(self, title: str, content: str) -> NewsAnalysis:
         """Translate + analyze one news item. Raises on failure."""
+
+    async def generate_key_points(self, title_be: str, summary_be: str) -> list[str]:
+        """Generate key points from already-translated content. Default: not supported."""
+        raise NotImplementedError(f"{self.name} does not support key-points generation")
 
     @abstractmethod
     async def check_health(self) -> bool: ...
@@ -144,6 +148,23 @@ class ClaudeBackend(LLMBackend):
         except Exception as e:
             logger.error(f"Claude health check failed: {e}")
             return False
+
+    async def generate_key_points(self, title_be: str, summary_be: str) -> list[str]:
+        """Generate 🔑 Галоўнае: key points from already-translated content"""
+        response = await self.client.messages.parse(
+            model=self.model,
+            max_tokens=1024,
+            messages=[
+                {
+                    "role": "user",
+                    "content": KEY_POINTS_PROMPT.format(title_be=title_be, summary_be=summary_be),
+                }
+            ],
+            output_format=KeyPointsAnalysis,
+        )
+        if response.parsed_output is None:
+            raise ValueError(f"Claude key-points returned no output (stop: {response.stop_reason})")
+        return response.parsed_output.key_points_be
 
     async def close(self) -> None:
         await self.client.close()

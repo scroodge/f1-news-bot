@@ -1,6 +1,6 @@
-"""Tests for the structured NewsAnalysis schema"""
+"""Tests for the structured analysis schemas"""
 
-from src.ai.schemas import NewsAnalysis
+from src.ai.schemas import KeyPointsAnalysis, NewsAnalysis
 
 
 def test_valid_analysis_parses():
@@ -35,3 +35,16 @@ def test_defaults():
     assert a.sentiment == "neutral"
     assert a.importance_level == 1
     assert a.key_points_be == []
+
+
+def test_key_points_analysis_parses():
+    k = KeyPointsAnalysis.model_validate_json(
+        '{"key_points_be": ["Ферстапен перамог у гонцы", "Хэмілтан фінішаваў другім"]}'
+    )
+    assert len(k.key_points_be) == 2
+    assert "Ферстапен" in k.key_points_be[0]
+
+
+def test_key_points_analysis_defaults():
+    k = KeyPointsAnalysis()
+    assert k.key_points_be == []

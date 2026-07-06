@@ -119,6 +119,21 @@ async def test_queue_reads_and_counts(db):
     assert await db.count_by_status(NewsStatus.REJECTED) == 3
 
 
+async def test_aware_published_at_normalized_to_naive_utc(db):
+    """Collectors may produce tz-aware datetimes; DB columns are naive UTC"""
+    from datetime import UTC
+
+    aware = datetime(2026, 7, 5, 12, 0, tzinfo=UTC)
+    item_id = await db.save_news_item(make_item(url="https://example.com/aware"))
+    assert item_id is not None
+    aware_item = make_item(url="https://example.com/aware-2")
+    aware_item.published_at = aware
+    item_id2 = await db.save_news_item(aware_item)
+    stored = await db.get_item(item_id2)
+    assert stored.published_at.tzinfo is None
+    assert stored.published_at == datetime(2026, 7, 5, 12, 0)
+
+
 async def test_rate_limit_counter(db):
     assert await db.published_in_last_hour() == 0
     item_id = await db.save_news_item(make_item())

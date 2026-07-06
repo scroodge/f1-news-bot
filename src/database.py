@@ -28,6 +28,7 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 from .config import settings
 from .models import NewsItem, NewsStatus, ProcessedNewsItem, SourceType, Stats
+from .utils.timezone import to_naive_utc
 
 logger = logging.getLogger(__name__)
 
@@ -162,7 +163,7 @@ class DatabaseManager:
                 url=news_item.url,
                 source=news_item.source,
                 source_type=news_item.source_type.value,
-                published_at=news_item.published_at,
+                published_at=to_naive_utc(news_item.published_at),
                 relevance_score=news_item.relevance_score,
                 keywords=news_item.keywords,
                 status=NewsStatus.COLLECTED,
@@ -335,6 +336,18 @@ class DatabaseManager:
                 select(NewsItemDB)
                 .where(NewsItemDB.status == status)
                 .order_by(order)
+                .offset(offset)
+                .limit(limit)
+            )
+            return [_to_model(i) for i in result.scalars().all()]
+
+    async def get_collected_news(self, limit: int = 20, offset: int = 0) -> list[NewsItem]:
+        """Raw collected items awaiting admin review (the "Новыя" queue)"""
+        async with self.session() as s:
+            result = await s.execute(
+                select(NewsItemDB)
+                .where(NewsItemDB.status == NewsStatus.COLLECTED)
+                .order_by(NewsItemDB.created_at.desc())
                 .offset(offset)
                 .limit(limit)
             )

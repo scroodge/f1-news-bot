@@ -15,9 +15,21 @@ from pydantic import BaseModel, Field
 
 from ..config import settings
 from ..database import db_manager
-from ..models import NewsStatus, ProcessedNewsItem
+from ..models import NewsItem, NewsStatus, ProcessedNewsItem
 from ..telegram_bot.formatting import format_channel_post
 from .auth import require_admin
+
+# Lazy import to avoid circular dependency at module level
+_content_processor = None
+
+
+async def get_content_processor():
+    global _content_processor
+    if _content_processor is None:
+        from ..ai.content_processor import ContentProcessor
+
+        _content_processor = ContentProcessor()
+    return _content_processor
 
 logger = logging.getLogger(__name__)
 
@@ -38,32 +50,38 @@ async def miniapp_index():
 # --- serialization ----------------------------------------------------------
 
 
-def _serialize(item: ProcessedNewsItem, with_preview: bool = True) -> dict:
-    data = {
+def _serialize(item: ProcessedNewsItem | NewsItem, with_preview: bool = True) -> dict:
+    is_processed = isinstance(item, ProcessedNewsItem)
+    data: dict = {
         "id": item.id,
         "title": item.title,
-        "title_be": item.translated_title,
-        "summary": item.summary,
-        "key_points": item.key_points,
-        "tags": item.tags,
+        "title_be": item.translated_title if is_processed else None,
+        "summary": item.summary if is_processed else "",
+        "key_points": item.key_points if is_processed else [],
+        "tags": item.tags if is_processed else [],
         "source": item.source,
         "source_type": item.source_type.value,
         "url": item.url,
         "image_url": item.image_url,
         "relevance_score": item.relevance_score,
-        "importance_level": item.importance_level,
-        "sentiment": item.sentiment,
-        "original_language": item.original_language,
+        "importance_level": item.importance_level if is_processed else 1,
+        "sentiment": item.sentiment if is_processed else "neutral",
+        "original_language": item.original_language if is_processed else None,
         "status": item.status.value,
         "published_at": item.published_at.isoformat(),
         "created_at": item.created_at.isoformat(),
         "published_to_channel_at": (
-            item.published_to_channel_at.isoformat() if item.published_to_channel_at else None
+            item.published_to_channel_at.isoformat() if is_processed and item.published_to_channel_at else None
         ),
-        "rejected_reason": item.rejected_reason,
+        "rejected_reason": item.rejected_reason if is_processed else None,
+        "has_translation": is_processed,
     }
     if with_preview:
-        data["preview"] = format_channel_post(item)
+        if is_processed:
+            data["preview"] = format_channel_post(item)
+        else:
+            snippet = (item.content[:300] + "...") if len(item.content) > 300 else item.content
+            data["preview"] = f"📰 {item.title}\n\n{snippet}"
     return data
 
 
@@ -136,6 +154,56 @@ async def edit_item(item_id: str, edit: EditRequest):
     item = await db_manager.get_item(item_id)
     logger.info(f"Mini App: edited {item_id} ({', '.join(fields)})")
     return _serialize(item)
+
+
+# --- raw queue (collected items awaiting admin translate decision) -----------
+
+
+@api.get("/queue/raw")
+async def get_raw_queue(page: int = 0, page_size: int = 10):
+    total = await db_manager.count_by_status(NewsStatus.COLLECTED)
+    items = await db_manager.get_collected_news(limit=page_size, offset=page * page_size)
+    return {
+        "items": [_serialize(i) for i in items],
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+    }
+
+
+# --- admin-triggered AI actions ----------------------------------------------
+
+
+@api.post("/items/{item_id}/translate")
+async def translate_item(item_id: str, provider: str = "ollama"):
+    item = await db_manager.get_item(item_id)
+    if item is None:
+        raise HTTPException(status_code=404, detail="Item not found")
+    if item.status != NewsStatus.COLLECTED:
+        raise HTTPException(status_code=409, detail="Item is not in collected state")
+    processor = await get_content_processor()
+    ok = await processor.translate_news(item_id, provider=provider)
+    if not ok:
+        raise HTTPException(status_code=500, detail="Translation failed")
+    updated = await db_manager.get_item(item_id)
+    logger.info(f"Mini App: translated {item_id} with {provider}")
+    return _serialize(updated)
+
+
+@api.post("/items/{item_id}/generate-keypoints")
+async def generate_keypoints(item_id: str):
+    item = await db_manager.get_item(item_id)
+    if item is None:
+        raise HTTPException(status_code=404, detail="Item not found")
+    if item.status != NewsStatus.PROCESSED:
+        raise HTTPException(status_code=409, detail="Item must be translated first")
+    processor = await get_content_processor()
+    ok = await processor.generate_keypoints(item_id)
+    if not ok:
+        raise HTTPException(status_code=500, detail="Key-points generation failed (check Claude API)")
+    updated = await db_manager.get_item(item_id)
+    logger.info(f"Mini App: generated key points for {item_id}")
+    return _serialize(updated)
 
 
 # --- history & stats --------------------------------------------------------

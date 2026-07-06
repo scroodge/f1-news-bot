@@ -13,7 +13,7 @@ from telethon.tl.types import Message
 
 from ..config import settings
 from ..models import NewsItem, SourceType
-from ..utils.timezone import get_hours_ago_utc
+from ..utils.timezone import get_hours_ago_utc, utc_now
 from .base_collector import BaseCollector
 
 logger = logging.getLogger(__name__)
@@ -68,7 +68,7 @@ class TelegramCollector(BaseCollector):
         """Collect news from Telegram channels"""
         if not self.enabled:
             logger.info("Telegram collector is disabled")
-            self.last_check = datetime.utcnow()
+            self.last_check = utc_now()
             return []
 
         if not self.client:
@@ -86,7 +86,7 @@ class TelegramCollector(BaseCollector):
             except Exception as e:
                 logger.error(f"Error collecting from {channel}: {e}")
 
-        self.last_check = datetime.utcnow()
+        self.last_check = utc_now()
         return all_news
 
     async def _collect_from_channel(self, channel: str) -> list[NewsItem]:
