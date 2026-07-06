@@ -167,6 +167,7 @@ function processedCardHtml(item) {
       <input name="tags" value="${esc((item.tags || []).join(", "))}">
       <div class="row">
         <button class="action" data-act="save">💾 Захаваць</button>
+        <button class="action secondary" data-act="generate-keypoints">🔑 Галоўнае</button>
         <button class="action secondary" data-act="cancel">Адмена</button>
       </div>
     </div>
@@ -178,7 +179,6 @@ function processedCardHtml(item) {
     <div class="row">
       <button class="action" data-act="translate-ollama">🌐 Пераперакласці Ollama</button>
       <button class="action secondary" data-act="translate-claude">🤖 Claude</button>
-      <button class="action secondary" data-act="generate-keypoints">🔑 Ключавыя пункты</button>
     </div>
   </div>`;
 }
@@ -331,10 +331,22 @@ async function handleAction(id, act, card) {
   }
 
   if (act === "generate-keypoints") {
+    if (editor && editor.classList.contains("open")) {
+      await call(`/items/${id}/edit`, {
+        method: "POST",
+        body: JSON.stringify({
+          title_be: editor.querySelector('[name="title_be"]').value,
+          summary: editor.querySelector('[name="summary"]').value,
+          tags: editor.querySelector('[name="tags"]').value.split(",").map(t => t.trim()).filter(Boolean),
+        }),
+      });
+    }
     card.style.opacity = ".5"; card.style.pointerEvents = "none";
     try {
       const updated = await call(`/items/${id}/generate-keypoints`, { method: "POST" });
       card.outerHTML = processedCardHtml(updated);
+      const newEditor = document.getElementById("edit-" + id);
+      if (newEditor) { newEditor.classList.add("open"); editingId = id; }
       toast("🔑 Ключавыя пункты згенераваны");
       tg?.HapticFeedback?.notificationOccurred("success");
     } catch (e) {
