@@ -14,88 +14,144 @@
     --btn: var(--tg-theme-button-color, #2481cc);
     --btn-fg: var(--tg-theme-button-text-color, #ffffff);
     --card: var(--tg-theme-secondary-bg-color, #f2f2f7);
+    --radius: 14px;
+    --radius-sm: 10px;
   }
   * { box-sizing: border-box; margin: 0; }
   body {
     background: var(--bg); color: var(--fg);
-    font: 15px/1.45 -apple-system, system-ui, Roboto, sans-serif;
-    padding-bottom: 70px;
+    font: -apple-system, system-ui, Roboto, sans-serif;
+    padding-bottom: 80px;
+    -webkit-font-smoothing: antialiased;
   }
   header {
-    position: sticky; top: 0; z-index: 5; background: var(--bg);
-    padding: 10px 14px 8px; border-bottom: 1px solid var(--card);
+    position: sticky; top: 0; z-index: 10; background: var(--bg);
+    padding: 12px 16px 10px; border-bottom: 1px solid color-mix(in srgb, var(--fg) 8%, transparent);
   }
-  h1 { font-size: 17px; }
-  .tabs { display: flex; gap: 6px; margin-top: 8px; }
+  .head-row { display: flex; align-items: center; justify-content: space-between; }
+  h1 { font-size: 18px; font-weight: 700; letter-spacing: -.3px; }
+  .head-badge { font-size: 12px; font-weight: 600; color: var(--btn-fg); background: var(--btn); padding: 2px 8px; border-radius: 20px; }
+  .tabs { display: flex; gap: 6px; margin-top: 10px; }
   .tab {
-    flex: 1; padding: 7px 4px; border: 0; border-radius: 9px; text-align: center;
-    background: var(--card); color: var(--fg); font-size: 13px; cursor: pointer;
+    flex: 1; padding: 8px 6px; border: 0; border-radius: var(--radius-sm); text-align: center;
+    background: var(--card); color: var(--fg); font-size: 13px; font-weight: 500; cursor: pointer;
+    transition: all .2s ease-out;
   }
   .tab.active { background: var(--btn); color: var(--btn-fg); }
-  .sub-tabs { display: flex; gap: 4px; margin-top: 6px; padding: 0 14px; }
+  .tab:active { transform: scale(.96); }
+  .sub-tabs { display: flex; gap: 4px; margin-top: 8px; padding: 0 16px; }
   .sub-tab {
-    flex: 1; padding: 5px 4px; border: 0; border-radius: 7px; text-align: center;
-    background: var(--card); color: var(--hint); font-size: 12px; cursor: pointer;
+    flex: 1; padding: 6px 8px; border: 0; border-radius: 8px; text-align: center;
+    background: transparent; color: var(--hint); font-size: 12px; font-weight: 500; cursor: pointer;
+    transition: all .2s ease-out; position: relative;
   }
-  .sub-tab.active { background: var(--btn); color: var(--btn-fg); font-weight: 600; }
-  main { padding: 12px 14px; display: grid; gap: 12px; }
+  .sub-tab.active { background: var(--card); color: var(--fg); font-weight: 600; }
+  .sub-tab:active { transform: scale(.96); }
+  main { padding: 12px 16px; display: grid; gap: 14px; }
   .card {
-    background: var(--card); border-radius: 14px; padding: 12px;
-    display: grid; gap: 10px;
+    background: var(--card); border-radius: var(--radius); padding: 14px;
+    display: grid; gap: 12px; transition: opacity .3s ease-out;
+    box-shadow: 0 1px 3px color-mix(in srgb, var(--fg) 4%, transparent);
   }
-  .preview { white-space: pre-wrap; word-break: break-word; font-size: 14px; }
-  .preview img { max-width: 100%; border-radius: 10px; margin-bottom: 8px; }
-  .meta { font-size: 12px; color: var(--hint); display: flex; flex-wrap: wrap; gap: 4px 12px; }
+  .card-img { width: 100%; aspect-ratio: 2/1; object-fit: cover; border-radius: var(--radius-sm); margin-bottom: 2px; background: color-mix(in srgb, var(--fg) 6%, transparent); }
+  .preview { white-space: pre-wrap; word-break: break-word; font-size: 13.5px; line-height: 1.5; }
+  .preview img { display: none; }
+  .meta { font-size: 11.5px; color: var(--hint); display: flex; flex-wrap: wrap; gap: 3px 14px; }
+  .meta span { display: inline-flex; align-items: center; gap: 3px; }
   .row { display: flex; gap: 8px; }
   button.action {
-    flex: 1; padding: 10px 6px; border: 0; border-radius: 10px;
-    font-size: 14px; font-weight: 600; cursor: pointer;
-    background: var(--btn); color: var(--btn-fg);
+    flex: 1; padding: 11px 8px; border: 0; border-radius: var(--radius-sm);
+    font-size: 13px; font-weight: 600; cursor: pointer; transition: all .15s ease-out;
+    background: var(--btn); color: var(--btn-fg); -webkit-tap-highlight-color: transparent;
   }
-  button.secondary { background: var(--bg); color: var(--fg); border: 1px solid var(--hint); font-weight: 400; }
-  button.danger { background: #d33; color: #fff; }
-  button:disabled { opacity: .5; }
-  .editor { display: none; gap: 8px; }
+  button.action:active { transform: scale(.96); }
+  button.action:disabled { opacity: .4; transform: none; }
+  button.ghost { background: var(--bg); color: var(--fg); border: 1px solid color-mix(in srgb, var(--fg) 15%, transparent); font-weight: 500; }
+  button.ghost:active { background: color-mix(in srgb, var(--fg) 6%, transparent); }
+  button.danger { background: #e74c3c; color: #fff; }
+  button.danger.ghost { background: transparent; color: #e74c3c; border-color: #e74c3c; }
+  button.danger.ghost:active { background: color-mix(in srgb, #e74c3c 8%, transparent); }
+  button.pill { border-radius: 20px; padding: 8px 16px; flex: 0 1 auto; font-size: 12px; }
+  .editor { display: none; gap: 8px; padding-top: 4px; }
   .editor.open { display: grid; }
-  .editor label { font-size: 12px; color: var(--hint); }
+  .editor label { font-size: 11px; font-weight: 600; color: var(--hint); text-transform: uppercase; letter-spacing: .4px; }
   .editor input, .editor textarea {
-    width: 100%; padding: 8px; border-radius: 8px; border: 1px solid var(--hint);
-    background: var(--bg); color: var(--fg); font: inherit;
+    width: 100%; padding: 10px 12px; border-radius: var(--radius-sm); border: 1px solid color-mix(in srgb, var(--fg) 12%, transparent);
+    background: var(--bg); color: var(--fg); font: inherit; font-size: 13px; outline: none;
+    transition: border-color .2s ease-out;
   }
-  .editor textarea { min-height: 90px; resize: vertical; }
-  .empty { text-align: center; color: var(--hint); padding: 40px 10px; }
+  .editor input:focus, .editor textarea:focus { border-color: var(--btn); }
+  .editor textarea { min-height: 80px; resize: vertical; }
+  .empty { text-align: center; color: var(--hint); padding: 50px 16px; font-size: 14px; line-height: 1.6; }
   .statgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-  .stat { background: var(--card); border-radius: 12px; padding: 12px; text-align: center; }
-  .stat b { display: block; font-size: 22px; }
-  .stat span { font-size: 12px; color: var(--hint); }
+  .stat {
+    background: var(--card); border-radius: var(--radius-sm); padding: 14px; text-align: center;
+    box-shadow: 0 1px 2px color-mix(in srgb, var(--fg) 3%, transparent);
+  }
+  .stat b { display: block; font-size: 24px; font-weight: 700; }
+  .stat span { font-size: 11px; color: var(--hint); display: block; margin-top: 2px; }
   .toast {
-    position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%);
-    background: var(--fg); color: var(--bg); padding: 9px 16px; border-radius: 10px;
-    font-size: 13px; opacity: 0; transition: opacity .25s; pointer-events: none; z-index: 10;
+    position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%) translateY(10px);
+    background: var(--fg); color: var(--bg); padding: 10px 20px; border-radius: 12px;
+    font-size: 13px; font-weight: 500; opacity: 0; pointer-events: none; z-index: 100;
+    transition: all .25s cubic-bezier(.22,1,.36,1); white-space: nowrap;
+    box-shadow: 0 4px 12px color-mix(in srgb, var(--fg) 20%, transparent);
   }
-  .toast.show { opacity: .92; }
-  .histitem { background: var(--card); border-radius: 12px; padding: 10px 12px; }
-  .histitem .t { font-size: 14px; }
-  .histitem .m { font-size: 12px; color: var(--hint); margin-top: 3px; }
+  .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+  .histitem {
+    background: var(--card); border-radius: var(--radius-sm); padding: 12px 14px;
+    box-shadow: 0 1px 2px color-mix(in srgb, var(--fg) 3%, transparent);
+  }
+  .histitem .t { font-size: 14px; font-weight: 500; }
+  .histitem .m { font-size: 11.5px; color: var(--hint); margin-top: 4px; }
   .orig-toggle {
-    background: none; border: 1px solid var(--hint); border-radius: 7px;
-    padding: 4px 10px; font-size: 12px; color: var(--hint); cursor: pointer;
-    width: 100%; text-align: left;
+    background: none; border: 1px solid color-mix(in srgb, var(--hint) 30%, transparent); border-radius: 8px;
+    padding: 6px 10px; font-size: 12px; color: var(--hint); cursor: pointer;
+    width: 100%; text-align: left; transition: all .2s ease-out; display: flex; align-items: center; gap: 6px;
   }
-  .orig-toggle:hover { opacity: .7; }
+  .orig-toggle:hover { border-color: var(--hint); }
+  .orig-toggle:active { transform: scale(.98); }
   .orig-content {
-    display: none; margin-top: 6px; padding: 8px; border-radius: 8px;
-    background: var(--bg); font-size: 13px; white-space: pre-wrap; word-break: break-word;
+    display: grid; grid-template-rows: 0fr; transition: grid-template-rows .3s cubic-bezier(.22,1,.36,1);
+    margin-top: 0;
   }
-  .orig-content.open { display: block; }
-</style>	
+  .orig-content.open { grid-template-rows: 1fr; }
+  .orig-content > div {
+    overflow: hidden;
+  }
+  .orig-inner {
+    padding: 10px 12px; border-radius: var(--radius-sm); margin-top: 6px;
+    background: color-mix(in srgb, var(--fg) 4%, transparent);
+    font-size: 12.5px; line-height: 1.55; white-space: pre-wrap; word-break: break-word;
+    border: 1px solid color-mix(in srgb, var(--fg) 6%, transparent);
+  }
+  .orig-inner b { font-weight: 600; }
+  .bulk-bar {
+    display: flex; gap: 8px; align-items: center;
+  }
+  .pill-reject {
+    padding: 8px 16px; border: 0; border-radius: 20px; font-size: 12px; font-weight: 600; cursor: pointer;
+    background: color-mix(in srgb, #e74c3c 10%, transparent); color: #e74c3c; transition: all .15s ease-out;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .pill-reject:active { transform: scale(.96); }
+  .count-chip {
+    font-size: 11px; color: var(--hint); font-weight: 500; margin-left: auto;
+  }
+  @media (prefers-color-scheme: dark) {
+    .stat b { color: var(--fg); }
+  }
+</style>
 </head>
 <body>
 <header>
-  <h1>🏎️ F1 News — мадэрацыя</h1>
+  <div class="head-row">
+    <h1>F1 News</h1>
+    <span class="head-badge">мадэрацыя</span>
+  </div>
   <div class="tabs">
     <button class="tab active" data-tab="queue">Чарга <span id="queue-count"></span></button>
-    <button class="tab" data-tab="published">Апублікаванае</button>
+    <button class="tab" data-tab="published">Гісторыя</button>
     <button class="tab" data-tab="stats">Статыстыка</button>
   </div>
 </header>
@@ -109,8 +165,8 @@ tg?.ready(); tg?.expand();
 const AUTH = tg?.initData ? { "Authorization": "tma " + tg.initData } : {};
 const API = "/admin/api";
 let activeTab = "queue";
-let queueSubTab = "raw"; // "raw" or "processed"
-let editingId = null; // track which item has its editor open
+let queueSubTab = "raw";
+let editingId = null;
 
 function toast(msg) {
   const el = document.getElementById("toast");
@@ -132,36 +188,39 @@ async function call(path, options = {}) {
 
 const esc = (s) => (s || "").replace(/[&<>"]/g, c => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;" }[c]));
 
-// --- raw-item card (COLLECTED, no translation yet) --------------------------
+// --- raw-item card ----------------------------------------------------------
 
 function rawCardHtml(item) {
+  const img = item.image_url ? `<img class="card-img" src="${esc(item.image_url)}" loading="lazy" onerror="this.remove()">` : "";
   return `
   <div class="card" data-id="${item.id}">
-    <div class="preview">${item.image_url ? `<img src="${esc(item.image_url)}" loading="lazy" onerror="this.remove()">` : ""}${esc(item.preview)}</div>
+    ${img}
+    <div class="preview">${esc(item.preview)}</div>
     <div class="meta">
       <span>📥 ${esc(item.source)}</span>
       <span>🎯 ${item.relevance_score.toFixed(2)}</span>
       <span>🌐 ${esc(item.original_language || "?")}</span>
-      <span>🆕 ${esc(item.status)}</span>
     </div>
     <div class="row">
-      <button class="action" data-act="translate-ollama">🌐 Перакласці Ollama</button>
-      <button class="action secondary" data-act="translate-claude">🤖 Claude</button>
-      <button class="action danger" data-act="reject">❌</button>
+      <button class="action" data-act="translate-ollama">🌐 Ollama</button>
+      <button class="action ghost" data-act="translate-claude">🤖 Claude</button>
+      <button class="action danger ghost" data-act="reject" style="flex:0 0 44px">✕</button>
     </div>
   </div>`;
 }
 
-// --- processed-item card (PROCESSED, translated, awaiting final review) -----
+// --- processed-item card ----------------------------------------------------
 
 function processedCardHtml(item) {
   const usage = item.llm_usage || {};
   const usageLine = usage.prompt_tokens != null
-    ? `🪙 ${usage.prompt_tokens}+${usage.completion_tokens} тokенаў`
+    ? `🪙 ${usage.prompt_tokens}+${usage.completion_tokens}`
     : "";
+  const img = item.image_url ? `<img class="card-img" src="${esc(item.image_url)}" loading="lazy" onerror="this.remove()">` : "";
   return `
   <div class="card" data-id="${item.id}">
-    <div class="preview">${item.image_url ? `<img src="${esc(item.image_url)}" loading="lazy" onerror="this.remove()">` : ""}${esc(item.preview)}</div>
+    ${img}
+    <div class="preview">${esc(item.preview)}</div>
     <div class="meta">
       <span>📥 ${esc(item.source)}</span>
       <span>⭐ ${item.importance_level}/5</span>
@@ -169,33 +228,33 @@ function processedCardHtml(item) {
       <span>🌐 ${esc(item.original_language || "?")}</span>
       ${usageLine ? `<span>${usageLine}</span>` : ""}
     </div>
-    <button class="orig-toggle" data-act="toggle-original">📄 Паказаць арыгінал</button>
+    <button class="orig-toggle" data-act="toggle-original">📄 Арыгінал</button>
     <div class="orig-content" id="orig-${item.id}">
-      <b>${esc(item.title)}</b>\n\n${esc(item.original_content || "")}
+      <div><div class="orig-inner"><b>${esc(item.title)}</b>\n\n${esc(item.original_content || "")}</div></div>
     </div>
     <div class="editor" id="edit-${item.id}">
-      <label>Загаловак (BY)</label>
+      <label>Загаловак</label>
       <input name="title_be" value="${esc(item.title_be || "")}">
       <label>Тэкст</label>
       <textarea name="summary">${esc(item.summary || "")}</textarea>
-      <label>🔑 Галоўнае (радок на пункт)</label>
+      <label>Галоўнае (радок на пункт)</label>
       <textarea name="key_points" rows="3">${esc((item.key_points || []).join("\n"))}</textarea>
       <label>Тэгі (праз коску)</label>
       <input name="tags" value="${esc((item.tags || []).join(", "))}">
       <div class="row">
-        <button class="action" data-act="save">💾 Захаваць</button>
-        <button class="action secondary" data-act="generate-keypoints">🔑 Згенераваць</button>
-        <button class="action secondary" data-act="cancel">Адмена</button>
+        <button class="action" data-act="save">Захаваць</button>
+        <button class="action ghost" data-act="generate-keypoints">🔑 Галоўнае</button>
+        <button class="action ghost" data-act="cancel" style="flex:0 0 60px">Скасаваць</button>
       </div>
     </div>
     <div class="row">
-      <button class="action" data-act="approve">✅ Апублікаваць</button>
-      <button class="action secondary" data-act="edit">✏️</button>
-      <button class="action danger" data-act="reject">❌</button>
+      <button class="action" data-act="approve">✅ Публікаваць</button>
+      <button class="action ghost" data-act="edit">✏️</button>
+      <button class="action danger ghost" data-act="reject" style="flex:0 0 44px">✕</button>
     </div>
     <div class="row">
-      <button class="action" data-act="translate-ollama">🌐 Пераперакласці Ollama</button>
-      <button class="action secondary" data-act="translate-claude">🤖 Claude</button>
+      <button class="action ghost" data-act="translate-ollama" style="font-size:12px">🌐 Пераперакласці Ollama</button>
+      <button class="action ghost" data-act="translate-claude" style="font-size:12px">🤖 Claude</button>
     </div>
   </div>`;
 }
@@ -206,13 +265,11 @@ let rawQueueData = null;
 let processedQueueData = null;
 
 function renderSubTabs() {
-  const el = document.getElementById("content");
-  const subHtml = `
+  return `
     <div class="sub-tabs">
-      <button class="sub-tab ${queueSubTab === "raw" ? "active" : ""}" data-subtab="raw">🆕 Новыя${rawQueueData ? ` (${rawQueueData.total})` : ""}</button>
-      <button class="sub-tab ${queueSubTab === "processed" ? "active" : ""}" data-subtab="processed">⏳ На модэрацыі${processedQueueData ? ` (${processedQueueData.total})` : ""}</span></button>
+      <button class="sub-tab ${queueSubTab === "raw" ? "active" : ""}" data-subtab="raw">Новыя${rawQueueData ? ` (${rawQueueData.total})` : ""}</button>
+      <button class="sub-tab ${queueSubTab === "processed" ? "active" : ""}" data-subtab="processed">На модэрацыі${processedQueueData ? ` (${processedQueueData.total})` : ""}</button>
     </div>`;
-  return subHtml;
 }
 
 async function renderQueue() {
@@ -226,20 +283,21 @@ async function renderQueue() {
     processedQueueData = processedData;
 
     const totalCount = (rawData.total || 0) + (processedData.total || 0);
-    document.getElementById("queue-count").textContent = totalCount ? `(${totalCount})` : "";
+    const badge = document.getElementById("queue-count");
+    badge.textContent = totalCount ? `(${totalCount})` : "";
 
     let html = renderSubTabs();
 
     if (queueSubTab === "raw") {
       if (!rawData.items.length) {
-        html += `<div class="empty">🏁 Новых навін няма</div>`;
+        html += `<div class="empty">Новых навін няма</div>`;
       } else {
-        html += `<button class="action danger" data-act="reject-all-raw" style="margin-bottom:6px">🗑 Выдаліць усе (${rawData.total})</button>`;
+        html += `<div class="bulk-bar"><button class="pill-reject" data-act="reject-all-raw">✕ Выдаліць усе (${rawData.total})</button></div>`;
         html += rawData.items.map(rawCardHtml).join("");
       }
     } else {
       if (!processedData.items.length) {
-        html += `<div class="empty">🏁 Чарга мадэрацыі пустая — усё прамадэравана!</div>`;
+        html += `<div class="empty">Чарга мадэрацыі пустая</div>`;
       } else {
         html += processedData.items.map(processedCardHtml).join("");
       }
@@ -247,13 +305,12 @@ async function renderQueue() {
 
     el.innerHTML = html;
 
-    // Restore editor state after re-render
     if (editingId) {
       const editor = document.getElementById("edit-" + editingId);
       if (editor) editor.classList.add("open");
     }
   } catch (e) {
-    el.innerHTML = `<div class="empty">⚠️ ${esc(e.message)}</div>`;
+    el.innerHTML = `<div class="empty">Памылка: ${esc(e.message)}</div>`;
   }
 }
 
@@ -268,7 +325,7 @@ async function renderPublished() {
         <div class="t">${esc(i.title_be || i.title)}</div>
         <div class="m">${i.published_to_channel_at ? new Date(i.published_to_channel_at).toLocaleString("be") : "—"} · ${esc(i.source)}</div>
       </div>`).join("")
-    : `<div class="empty">Пакуль нічога не апублікавана.</div>`;
+    : `<div class="empty">Пакуль нічога не апублікавана</div>`;
 }
 
 async function renderStats() {
@@ -277,14 +334,14 @@ async function renderStats() {
   const by = d.stats.by_status || {};
   el.innerHTML = `
     <div class="statgrid">
-      <div class="stat"><b>${d.pending}</b><span>⏳ чакаюць мадэрацыі</span></div>
-      <div class="stat"><b>${d.queued}</b><span>📤 у чарзе на публікацыю</span></div>
-      <div class="stat"><b>${d.stats.published_today}</b><span>📅 сёння апублікавана</span></div>
-      <div class="stat"><b>${d.stats.published_this_week}</b><span>🗓 за тыдзень</span></div>
-      <div class="stat"><b>${d.published_last_hour}/${d.max_posts_per_hour}</b><span>🚦 ліміт за гадзіну</span></div>
-      <div class="stat"><b>${d.stats.total_collected}</b><span>📊 усяго сабрана</span></div>
-      <div class="stat"><b>${by.rejected || 0}</b><span>❌ адхілена</span></div>
-      <div class="stat"><b>${by.collected || 0}</b><span>🆕 чакаюць апрацоўкі</span></div>
+      <div class="stat"><b>${d.pending}</b><span>чакаюць</span></div>
+      <div class="stat"><b>${d.queued}</b><span>на публікацыю</span></div>
+      <div class="stat"><b>${d.stats.published_today}</b><span>сёння</span></div>
+      <div class="stat"><b>${d.stats.published_this_week}</b><span>за тыдзень</span></div>
+      <div class="stat"><b>${d.published_last_hour}/${d.max_posts_per_hour}</b><span>ліміт/гадз</span></div>
+      <div class="stat"><b>${d.stats.total_collected}</b><span>сабрана</span></div>
+      <div class="stat"><b>${by.rejected || 0}</b><span>адхілена</span></div>
+      <div class="stat"><b>${by.collected || 0}</b><span>чакаюць</span></div>
     </div>`;
 }
 
@@ -314,16 +371,16 @@ async function handleAction(id, act, card) {
     };
     const updated = await call(`/items/${id}/edit`, { method: "POST", body: JSON.stringify(body) });
     card.outerHTML = processedCardHtml(updated);
-    toast("💾 Захавана");
+    toast("Захавана");
     tg?.HapticFeedback?.notificationOccurred("success");
     return;
   }
 
   if (act === "approve" || act === "reject") {
-    if (act === "reject" && !confirm("Адхіліць гэтую навіну?")) return;
+    if (act === "reject" && !confirm("Адхіліць навіну?")) return;
     await call(`/items/${id}/${act}`, { method: "POST" });
     card.style.opacity = ".35"; card.style.pointerEvents = "none";
-    toast(act === "approve" ? "✅ У чарзе на публікацыю" : "❌ Адхілена");
+    toast(act === "approve" ? "У чарзе на публікацыю" : "Адхілена");
     tg?.HapticFeedback?.notificationOccurred(act === "approve" ? "success" : "warning");
     setTimeout(renderQueue, 600);
     return;
@@ -335,7 +392,7 @@ async function handleAction(id, act, card) {
     card.querySelector(".preview").textContent = "⏳ Пераклад...";
     try {
       const updated = await call(`/items/${id}/translate?provider=${provider}`, { method: "POST" });
-      toast("✅ Пераклад гатовы");
+      toast("Пераклад гатовы");
       tg?.HapticFeedback?.notificationOccurred("success");
       if (queueSubTab === "raw") {
         await renderQueue();
@@ -345,7 +402,7 @@ async function handleAction(id, act, card) {
       }
     } catch (e) {
       card.style.opacity = "1"; card.style.pointerEvents = "auto";
-      toast("⚠️ " + e.message);
+      toast("Памылка: " + e.message);
     }
     return;
   }
@@ -367,11 +424,11 @@ async function handleAction(id, act, card) {
       card.outerHTML = processedCardHtml(updated);
       const newEditor = document.getElementById("edit-" + id);
       if (newEditor) { newEditor.classList.add("open"); editingId = id; }
-      toast("🔑 Ключавыя пункты згенераваны");
+      toast("Ключавыя пункты згенераваны");
       tg?.HapticFeedback?.notificationOccurred("success");
     } catch (e) {
       card.style.opacity = "1"; card.style.pointerEvents = "auto";
-      toast("⚠️ " + e.message);
+      toast("Памылка: " + e.message);
     }
     return;
   }
@@ -386,7 +443,7 @@ async function show(tab) {
   document.querySelectorAll(".tab").forEach(t => t.classList.toggle("active", t.dataset.tab === tab));
   document.getElementById("content").innerHTML = `<div class="empty">Загрузка…</div>`;
   try { await renderers[tab](); }
-  catch (e) { document.getElementById("content").innerHTML = `<div class="empty">⚠️ ${esc(e.message)}</div>`; }
+  catch (e) { document.getElementById("content").innerHTML = `<div class="empty">Памылка: ${esc(e.message)}</div>`; }
 }
 
 document.querySelector(".tabs").addEventListener("click", (e) => {
@@ -394,7 +451,6 @@ document.querySelector(".tabs").addEventListener("click", (e) => {
   if (tab) show(tab);
 });
 
-// Sub-tab switching (raw / processed)
 document.getElementById("content").addEventListener("click", (e) => {
   const subTab = e.target.closest(".sub-tab")?.dataset.subtab;
   if (subTab && activeTab === "queue") {
@@ -403,7 +459,6 @@ document.getElementById("content").addEventListener("click", (e) => {
   }
 });
 
-// Button actions
 document.getElementById("content").addEventListener("click", async (e) => {
   const button = e.target.closest("button[data-act]");
   if (!button) return;
@@ -417,7 +472,7 @@ document.getElementById("content").addEventListener("click", async (e) => {
     if (button.dataset.act === "reject-all-raw") {
       if (!confirm("Выдаліць усе новыя навіны?")) return;
       const result = await call("/queue/raw/reject-all", { method: "POST" });
-      toast(`🗑 Выдалена ${result.count} навін`);
+      toast("Выдалена " + result.count);
       tg?.HapticFeedback?.notificationOccurred("warning");
       await renderQueue();
     } else {
@@ -426,7 +481,7 @@ document.getElementById("content").addEventListener("click", async (e) => {
       await handleAction(card.dataset.id, button.dataset.act, card);
     }
   }
-  catch (err) { toast("⚠️ " + err.message); }
+  catch (err) { toast("Памылка: " + err.message); }
   finally { button.disabled = false; }
 });
 

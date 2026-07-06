@@ -116,7 +116,6 @@ class F1NewsBot:
         self._stop_event = asyncio.Event()
 
         publisher_task = asyncio.create_task(self.publisher.run(self._stop_event))
-        notify_task = asyncio.create_task(self._notify_loop())
 
         await self.application.initialize()
         await self.application.start()
@@ -134,7 +133,7 @@ class F1NewsBot:
                 pass
             await self.application.stop()
             await self.application.shutdown()
-            await asyncio.gather(publisher_task, notify_task, return_exceptions=True)
+            await asyncio.gather(publisher_task, return_exceptions=True)
             await redis_service.close()
             await db_manager.close()
 
