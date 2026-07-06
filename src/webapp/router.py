@@ -79,6 +79,7 @@ def _serialize(item: ProcessedNewsItem | NewsItem, with_preview: bool = True) ->
         "rejected_reason": item.rejected_reason if is_processed else None,
         "has_translation": is_processed,
         "llm_usage": item.llm_usage if is_processed else None,
+        "original_content": item.content if is_processed else None,
     }
     if with_preview:
         if is_processed:

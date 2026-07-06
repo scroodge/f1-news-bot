@@ -77,7 +77,18 @@
   .histitem { background: var(--card); border-radius: 12px; padding: 10px 12px; }
   .histitem .t { font-size: 14px; }
   .histitem .m { font-size: 12px; color: var(--hint); margin-top: 3px; }
-</style>
+  .orig-toggle {
+    background: none; border: 1px solid var(--hint); border-radius: 7px;
+    padding: 4px 10px; font-size: 12px; color: var(--hint); cursor: pointer;
+    width: 100%; text-align: left;
+  }
+  .orig-toggle:hover { opacity: .7; }
+  .orig-content {
+    display: none; margin-top: 6px; padding: 8px; border-radius: 8px;
+    background: var(--bg); font-size: 13px; white-space: pre-wrap; word-break: break-word;
+  }
+  .orig-content.open { display: block; }
+</style>	
 </head>
 <body>
 <header>
@@ -157,6 +168,10 @@ function processedCardHtml(item) {
       <span>🎯 ${item.relevance_score.toFixed(2)}</span>
       <span>🌐 ${esc(item.original_language || "?")}</span>
       ${usageLine ? `<span>${usageLine}</span>` : ""}
+    </div>
+    <button class="orig-toggle" data-act="toggle-original">📄 Паказаць арыгінал</button>
+    <div class="orig-content" id="orig-${item.id}">
+      <b>${esc(item.title)}</b>\n\n${esc(item.original_content || "")}
     </div>
     <div class="editor" id="edit-${item.id}">
       <label>Загаловак (BY)</label>
@@ -392,8 +407,13 @@ document.getElementById("content").addEventListener("click", (e) => {
 document.getElementById("content").addEventListener("click", async (e) => {
   const button = e.target.closest("button[data-act]");
   if (!button) return;
-  button.disabled = true;
   try {
+    if (button.dataset.act === "toggle-original") {
+      const content = button.nextElementSibling;
+      if (content) content.classList.toggle("open");
+      return;
+    }
+    button.disabled = true;
     if (button.dataset.act === "reject-all-raw") {
       if (!confirm("Выдаліць усе новыя навіны?")) return;
       const result = await call("/queue/raw/reject-all", { method: "POST" });
