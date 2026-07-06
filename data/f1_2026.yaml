@@ -1,0 +1,151 @@
+# F1 2026 season domain data — teams, drivers, keywords (en / ru / be forms)
+# Edit this file when the grid changes; no code changes needed.
+# Loaded by src/config.py into F1_KEYWORDS / HIGH_PRIORITY_KEYWORDS / TEAM_NAMES / DRIVER_NAMES.
+
+keywords:
+  general:
+    # English
+    - formula 1
+    - f1
+    - formula one
+    - grand prix
+    - gp
+    - racing
+    - race
+    - championship
+    - season
+    - qualifying
+    - pole position
+    - podium
+    - victory
+    - driver
+    - constructor
+    - pit stop
+    - safety car
+    - red flag
+    - overtake
+    - crash
+    - penalty
+    - standings
+    - circuit
+    - lap
+    - fia
+    # Russian
+    - формула 1
+    - ф1
+    - формула один
+    - гран при
+    - гран-при
+    - гонка
+    - автогонки
+    - чемпионат
+    - сезон
+    - квалификация
+    - поул
+    - подиум
+    - победа
+    - пилот
+    - конструктор
+    - пит-стоп
+    - машина безопасности
+    - красный флаг
+    - обгон
+    - авария
+    - штраф
+    - турнирная таблица
+    - трасса
+    - гонщик
+    # Belarusian
+    - формула 1
+    - ф1
+    - гран-пры
+    - гонка
+    - чэмпіянат
+    - сезон
+    - кваліфікацыя
+    - подыум
+    - перамога
+    - пілот
+    - пітстоп
+    - абгон
+    - аварыя
+    - траса
+    - гоншчык
+
+  high_priority:
+    - formula 1
+    - f1
+    - формула 1
+    - ф1
+    - grand prix
+    - гран при
+    - гран-пры
+    - championship
+    - чемпионат
+    - чэмпіянат
+    - verstappen
+    - ферстаппен
+    - ферстапен
+    - hamilton
+    - хэмилтон
+    - хэмілтан
+    - ferrari
+    - феррари
+    - феррары
+    - mercedes
+    - мерседес
+    - мэрсэдэс
+    - red bull
+    - ред булл
+    - рэд бул
+    - mclaren
+    - макларен
+    - макларэн
+
+teams:
+  - names: [mclaren, макларен, макларэн]
+  - names: [ferrari, феррари, феррары]
+  - names: [red bull, ред булл, рэд бул]
+  - names: [mercedes, мерседес, мэрсэдэс]
+  - names: [aston martin, астон мартин, астан марцін]
+  - names: [alpine, альпин, альпін]
+  - names: [williams, уильямс, уільямс]
+  - names: [racing bulls, рейсинг буллз, рэйсінг булз]
+  - names: [audi, ауди, аўдзі, sauber, заубер]
+  - names: [haas, хаас]
+  - names: [cadillac, кадиллак, кадылак]
+
+drivers:
+  # McLaren
+  - names: [norris, норрис, норыс]
+  - names: [piastri, пиастри, пʼястры]
+  # Ferrari
+  - names: [leclerc, леклер, леклерк]
+  - names: [hamilton, хэмилтон, хамилтон, хэмілтан]
+  # Red Bull
+  - names: [verstappen, ферстаппен, ферстапен, макс]
+  - names: [tsunoda, цунода]
+  # Mercedes
+  - names: [russell, расселл, расэл]
+  - names: [antonelli, антонелли, антанэлі]
+  # Aston Martin
+  - names: [alonso, алонсо, алонса]
+  - names: [stroll, стролл, строл]
+  # Alpine
+  - names: [gasly, гасли, гаслі]
+  - names: [colapinto, колапинто, калапінта]
+  # Williams
+  - names: [albon, албон, альбон]
+  - names: [sainz, сайнс, сайнц]
+  # Racing Bulls
+  - names: [lawson, лоусон, лоўсан]
+  - names: [hadjar, хаджар]
+  # Audi
+  - names: [hulkenberg, хюлькенберг, хюлькенберг, хюлькенбэрг]
+  - names: [bortoleto, бортолето, барталета]
+  # Haas
+  - names: [ocon, окон, акон]
+  - names: [bearman, бирман, бірман]
+  # Cadillac
+  - names: [perez, перес, перэс]
+  - names: [bottas, боттас, ботас]

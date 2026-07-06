@@ -93,8 +93,15 @@ each phase leaves the bot working.
   `ollama` (default, remote server) and optionally `claude` for
   higher-quality Belarusian translation.
 - **Semantic dedup**: embeddings via `bge-m3:latest` on the remote server to
-  catch the same story from multiple sources; merge into one item with
-  multiple source links.
+  catch the same story from multiple sources.
+  📐 **Calibration data (2026-07-06, title-only probes):** same story EN↔RU
+  ≈ 0.65–0.78; same event reworded EN ≈ 0.75; *different* events about the
+  same driver/weekend ≈ 0.79 — the bands overlap on short texts. Production
+  embeds title+1500 chars of body (more signal), but the default threshold
+  stays conservative at **0.90**: auto-reject only near-copies; borderline
+  duplicates reach the admin, who rejects them in one tap. Re-tune
+  `DEDUP_SIMILARITY_THRESHOLD` with real article data once the Phase 2b
+  scrapers multiply sources.
 - Rewrite, don't just translate: generate channel-native Belarusian posts
   with a consistent voice, emoji conventions, and hashtags.
 - Refresh domain data: 2026 teams/drivers/calendar in a data file

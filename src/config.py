@@ -2,8 +2,11 @@
 Configuration management for F1 News Bot
 """
 
+import logging
+from pathlib import Path
 from typing import Annotated
 
+import yaml
 from pydantic import field_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
@@ -41,12 +44,16 @@ class Settings(BaseSettings):
     redis_url: str = "redis://localhost:6379/0"
 
     # LLM (remote Ollama-compatible server)
-    llm_provider: str = "ollama"
+    llm_provider: str = "ollama"  # "ollama" | "claude"
     llm_base_url: str = "https://dev.offtech.by:8444/ollama"
     llm_model: str = "qwen2.5:14b"
     llm_embedding_model: str = "bge-m3:latest"
     llm_api_key: str = "ollama"
     llm_max_tokens: int = 512
+
+    # Claude API (preferred for Belarusian translation quality)
+    anthropic_api_key: str = ""
+    claude_model: str = "claude-haiku-4-5"
 
     # Sources
     rss_feeds: CommaSeparatedList = DEFAULT_RSS_FEEDS
@@ -57,6 +64,11 @@ class Settings(BaseSettings):
     min_relevance_score: float = 0.1
     max_news_items_per_check: int = 50
     max_posts_per_hour: int = 5
+
+    # Semantic dedup (embeddings via the Ollama server)
+    dedup_enabled: bool = True
+    dedup_similarity_threshold: float = 0.90
+    dedup_lookback_days: int = 7
 
     # Misc
     timezone: str = "Europe/Moscow"
@@ -80,199 +92,32 @@ class Settings(BaseSettings):
         return url
 
 
-# F1 Keywords for content filtering (English and Russian)
-F1_KEYWORDS = [
-    # English keywords
-    "Formula 1",
-    "F1",
-    "Formula One",
-    "Grand Prix",
-    "GP",
-    "racing",
-    "race",
-    "Hamilton",
-    "Verstappen",
-    "Leclerc",
-    "Russell",
-    "Sainz",
-    "Perez",
-    "Norris",
-    "Mercedes",
-    "Red Bull",
-    "Ferrari",
-    "McLaren",
-    "Alpine",
-    "Aston Martin",
-    "AlphaTauri",
-    "Alfa Romeo",
-    "Williams",
-    "Haas",
-    "championship",
-    "season",
-    "qualifying",
-    "pole position",
-    "podium",
-    "victory",
-    "win",
-    "driver",
-    "constructor",
-    "team",
-    "car",
-    "engine",
-    "tire",
-    "strategy",
-    "pit stop",
-    "safety car",
-    "red flag",
-    "yellow flag",
-    "overtake",
-    "crash",
-    "accident",
-    "penalty",
-    "points",
-    "leader",
-    "standings",
-    "circuit",
-    "track",
-    "lap",
-    # Russian keywords
-    "формула 1",
-    "ф1",
-    "формула один",
-    "гран при",
-    "гонка",
-    "автогонки",
-    "хамилтон",
-    "верстаппен",
-    "леклер",
-    "расселл",
-    "сайнс",
-    "перес",
-    "норрис",
-    "мерседес",
-    "ред булл",
-    "феррари",
-    "макларен",
-    "альпин",
-    "астон мартин",
-    "альфатаури",
-    "альфа ромео",
-    "уильямс",
-    "хаас",
-    "чемпионат",
-    "сезон",
-    "квалификация",
-    "поул позиция",
-    "подиум",
-    "победа",
-    "победить",
-    "пилот",
-    "конструктор",
-    "команда",
-    "машина",
-    "двигатель",
-    "шина",
-    "стратегия",
-    "пит-стоп",
-    "болид безопасности",
-    "красный флаг",
-    "желтый флаг",
-    "обгон",
-    "авария",
-    "штраф",
-    "очки",
-    "лидер",
-    "турнирная таблица",
-    "трасса",
-    "круг",
-    "гонщик",
-    "автогонщик",
-]
+# --- F1 domain data ---------------------------------------------------------
+# Loaded from data/f1_2026.yaml (teams/drivers/keywords in en/ru/be forms).
+# Edit the YAML when the grid changes; these lists drive relevance scoring.
 
-# High-priority keywords that strongly indicate F1 content
-HIGH_PRIORITY_KEYWORDS = [
-    "formula 1",
-    "f1",
-    "формула 1",
-    "ф1",
-    "grand prix",
-    "гран при",
-    "racing",
-    "гонка",
-    "championship",
-    "чемпионат",
-    "verstappen",
-    "верстаппен",
-    "hamilton",
-    "хамилтон",
-    "ferrari",
-    "феррари",
-    "mercedes",
-    "мерседес",
-    "red bull",
-    "ред булл",
-]
+_DATA_FILE = Path(__file__).resolve().parent.parent / "data" / "f1_2026.yaml"
 
-# Team and driver names for better detection
-TEAM_NAMES = [
-    "mercedes",
-    "мерседес",
-    "red bull",
-    "ред булл",
-    "ferrari",
-    "феррари",
-    "mclaren",
-    "макларен",
-    "alpine",
-    "альпин",
-    "aston martin",
-    "астон мартин",
-    "alphatauri",
-    "альфатаури",
-    "alfa romeo",
-    "альфа ромео",
-    "williams",
-    "уильямс",
-    "haas",
-    "хаас",
-]
+# Minimal fallback so the app still runs if the data file is missing
+_FALLBACK_KEYWORDS = ["formula 1", "f1", "grand prix", "формула 1", "ф1", "гран при"]
 
-DRIVER_NAMES = [
-    "hamilton",
-    "хамилтон",
-    "verstappen",
-    "верстаппен",
-    "leclerc",
-    "леклер",
-    "russell",
-    "расселл",
-    "sainz",
-    "сайнс",
-    "perez",
-    "перес",
-    "norris",
-    "норрис",
-    "alonso",
-    "алонсо",
-    "ocon",
-    "окон",
-    "gasly",
-    "гасли",
-    "tsunoda",
-    "цунода",
-    "bottas",
-    "боттас",
-    "zhou",
-    "чжоу",
-    "albon",
-    "альбон",
-    "latifi",
-    "латифи",
-    "schumacher",
-    "шумахер",
-    "magnussen",
-    "магнуссен",
-]
+
+def _load_domain_data() -> tuple[list[str], list[str], list[str], list[str]]:
+    try:
+        with open(_DATA_FILE, encoding="utf-8") as f:
+            data = yaml.safe_load(f)
+        general = [k.lower() for k in data["keywords"]["general"]]
+        high_priority = [k.lower() for k in data["keywords"]["high_priority"]]
+        teams = [name.lower() for team in data["teams"] for name in team["names"]]
+        drivers = [name.lower() for driver in data["drivers"] for name in driver["names"]]
+        keywords = list(dict.fromkeys(general + teams + drivers))
+        return keywords, high_priority, teams, drivers
+    except Exception as e:  # pragma: no cover - defensive
+        logging.getLogger(__name__).error(f"Failed to load {_DATA_FILE}: {e} — using fallback")
+        return _FALLBACK_KEYWORDS, _FALLBACK_KEYWORDS, [], []
+
+
+F1_KEYWORDS, HIGH_PRIORITY_KEYWORDS, TEAM_NAMES, DRIVER_NAMES = _load_domain_data()
 
 # Create settings instance
 settings = Settings()

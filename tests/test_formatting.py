@@ -9,44 +9,56 @@ from src.telegram_bot.formatting import format_channel_post, format_details, for
 def make_item(**overrides) -> ProcessedNewsItem:
     defaults = dict(
         id="00000000-0000-0000-0000-000000000001",
-        title="Ферстаппен выиграл Гран-при Великобритании",
-        content="Полный текст новости.",
+        title="Verstappen wins the British Grand Prix",
+        content="Full article text.",
         url="https://example.com/news/1",
-        source="f1news.ru",
+        source="autosport.com",
         source_type=SourceType.RSS,
         published_at=datetime(2026, 7, 5, 12, 0),
-        summary="Макс Ферстаппен одержал победу на Сильверстоуне.",
-        key_points=["поул-позиция", "быстрый круг", "третья победа подряд"],
+        summary="Макс Ферстапен перамог на Сільверстоўне.",
+        key_points=["поўл-пазіцыя", "хуткі круг", "трэцяя перамога запар", "чацвёрты пункт"],
         importance_level=4,
         relevance_score=0.95,
-        tags=["гонка", "верстаппен"],
+        tags=["гонка", "ферстапен"],
+        translated_title="Ферстапен выйграў Гран-пры Вялікабрытаніі",
     )
     defaults.update(overrides)
     return ProcessedNewsItem(**defaults)
 
 
-def test_channel_post_contains_essentials():
+def test_channel_post_uses_belarusian_title():
     post = format_channel_post(make_item())
-    assert "Ферстаппен выиграл" in post
-    assert "https://example.com/news/1" in post
-    assert "f1news.ru" in post
+    assert "Ферстапен выйграў" in post
+    assert "Verstappen wins" not in post
+
+
+def test_channel_post_belarusian_labels():
+    post = format_channel_post(make_item())
+    assert "Крыніца: autosport.com" in post
+    assert "Чытаць: https://example.com/news/1" in post
     assert "#гонка" in post
+
+
+def test_channel_post_falls_back_to_original_title():
+    post = format_channel_post(make_item(translated_title=None))
+    assert "Verstappen wins the British Grand Prix" in post
 
 
 def test_channel_post_limits_key_points():
     post = format_channel_post(make_item())
-    assert "поул-позиция" in post
-    assert "быстрый круг" in post
-    assert "третья победа подряд" not in post  # only first 2 key points
+    assert "поўл-пазіцыя" in post
+    assert "чацвёрты пункт" not in post  # only first 3 key points
 
 
 def test_channel_post_truncates_long_summary():
-    post = format_channel_post(make_item(summary="х" * 300))
-    assert "х" * 200 + "..." in post
+    post = format_channel_post(make_item(summary="х" * 500))
+    assert "х" * 400 + "..." in post
 
 
-def test_details_show_score_and_status():
+def test_details_show_both_titles():
     details = format_details(make_item())
+    assert "Ферстапен выйграў" in details
+    assert "Verstappen wins" in details
     assert "0.95" in details
     assert "4/5" in details
 
@@ -56,7 +68,6 @@ def test_queue_page_empty():
 
 
 def test_queue_page_lists_items():
-    items = [make_item(), make_item(title="Феррари обновила болид")]
+    items = [make_item(), make_item(title="Ferrari upgrade package")]
     page = format_queue_page(items, page=0, total=2)
     assert "1." in page and "2." in page
-    assert "Феррари обновила болид" in page

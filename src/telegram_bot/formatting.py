@@ -14,18 +14,19 @@ STATUS_LABELS = {
 
 
 def format_channel_post(item: ProcessedNewsItem) -> str:
-    """The post exactly as it goes to the channel"""
-    message = f"🏎️ {item.title}\n\n"
+    """The post exactly as it goes to the channel — Belarusian output"""
+    title = item.translated_title or item.title
+    message = f"🏎️ {title}\n\n"
     if item.summary:
-        summary = item.summary[:200] + "..." if len(item.summary) > 200 else item.summary
-        message += f"📝 {summary}\n\n"
+        summary = item.summary[:400] + "..." if len(item.summary) > 400 else item.summary
+        message += f"{summary}\n\n"
     if item.key_points:
-        message += "🔑 Ключевые моменты:\n"
-        for point in item.key_points[:2]:
+        message += "🔑 Галоўнае:\n"
+        for point in item.key_points[:3]:
             message += f"• {point}\n"
         message += "\n"
-    message += f"📰 Источник: {item.source}\n"
-    message += f"🔗 Читать: {item.url}"
+    message += f"📰 Крыніца: {item.source}\n"
+    message += f"🔗 Чытаць: {item.url}"
     if item.tags:
         tags_str = " ".join([f"#{t.replace(' ', '_')}" for t in item.tags[:3]])
         message += f"\n\n{tags_str}"
@@ -35,7 +36,9 @@ def format_channel_post(item: ProcessedNewsItem) -> str:
 def format_details(item: ProcessedNewsItem) -> str:
     """Admin-facing detail view of one item"""
     message = "📰 Детали новости:\n\n"
-    message += f"Заголовок: {item.title}\n\n"
+    if item.translated_title:
+        message += f"Заголовок (BY): {item.translated_title}\n"
+    message += f"Заголовок (оригинал): {item.title}\n\n"
     if item.summary:
         message += f"Краткое содержание:\n{item.summary}\n\n"
     if item.key_points:

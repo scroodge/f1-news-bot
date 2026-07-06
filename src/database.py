@@ -82,6 +82,9 @@ class NewsItemDB(Base):
     telegram_message_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
     published_to_channel_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
+    # Semantic dedup (bge-m3 vector as JSON; scale doesn't warrant pgvector)
+    embedding: Mapped[list | None] = mapped_column(JSON, nullable=True)
+
 
 def _to_model(item: NewsItemDB) -> ProcessedNewsItem | NewsItem:
     """Convert a DB row to the appropriate pydantic model"""
@@ -249,6 +252,31 @@ class DatabaseManager:
                 setattr(item, key, value)
             await s.commit()
             return True
+
+    async def set_embedding(self, news_id: str, embedding: list[float]) -> bool:
+        async with self.session() as s:
+            item = await s.get(NewsItemDB, uuid.UUID(news_id))
+            if not item:
+                return False
+            item.embedding = embedding
+            await s.commit()
+            return True
+
+    async def get_recent_embeddings(
+        self, days: int = 7, exclude_id: str | None = None
+    ) -> list[tuple[str, list[float]]]:
+        """(id, embedding) pairs of recent non-rejected items, for dedup"""
+        cutoff = datetime.utcnow() - timedelta(days=days)
+        async with self.session() as s:
+            query = select(NewsItemDB.id, NewsItemDB.embedding).where(
+                NewsItemDB.created_at >= cutoff,
+                NewsItemDB.embedding.is_not(None),
+                NewsItemDB.status != NewsStatus.REJECTED,
+            )
+            if exclude_id:
+                query = query.where(NewsItemDB.id != uuid.UUID(exclude_id))
+            result = await s.execute(query)
+            return [(str(item_id), embedding) for item_id, embedding in result.all()]
 
     async def delete_item(self, news_id: str) -> bool:
         async with self.session() as s:
