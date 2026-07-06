@@ -19,6 +19,8 @@ from .database import db_manager
 from .models import NewsStatus
 from .utils.logger import setup_logging
 from .utils.monitor import system_monitor
+from .webapp.router import api as admin_api
+from .webapp.router import router as admin_router
 
 logger = setup_logging()
 
@@ -42,6 +44,10 @@ class F1NewsBotApp:
 
         self._setup_routes()
         self._setup_middleware()
+
+        # Telegram Mini App admin panel (static page + authenticated API)
+        self.app.include_router(admin_router)
+        self.app.include_router(admin_api)
 
     def _setup_routes(self):
         """Setup API routes"""

@@ -5,7 +5,7 @@ Shared handler helpers.
 import functools
 import logging
 
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update, WebAppInfo
 
 from ...config import settings
 from ...database import db_manager
@@ -14,6 +14,22 @@ from ...models import NewsStatus, ProcessedNewsItem
 logger = logging.getLogger(__name__)
 
 QUEUE_PAGE_SIZE = 5
+
+
+def miniapp_keyboard() -> InlineKeyboardMarkup | None:
+    """Button that opens the Mini App admin panel (needs a public HTTPS URL)"""
+    if not settings.miniapp_url.startswith("https://"):
+        return None
+    return InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton(
+                    "🛠 Адкрыць панэль мадэрацыі",
+                    web_app=WebAppInfo(url=settings.miniapp_url),
+                )
+            ]
+        ]
+    )
 
 
 def admin_only(handler):

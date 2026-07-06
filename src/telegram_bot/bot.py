@@ -25,6 +25,7 @@ from .handlers.commands import (
     status_command,
     view_command,
 )
+from .handlers.helpers import miniapp_keyboard
 from .publisher import Publisher
 
 logger = logging.getLogger(__name__)
@@ -98,6 +99,7 @@ class F1NewsBot:
                             f"🆕 Новых новостей на модерации: {new_count}\n"
                             f"Всего в очереди: {pending}\n\n/queue"
                         ),
+                        reply_markup=miniapp_keyboard(),
                     )
             except Exception as e:
                 logger.error(f"Error in notify loop: {e}")

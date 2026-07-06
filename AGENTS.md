@@ -54,6 +54,15 @@ Contabo VPS — local dev reaches it via `ssh -f -N -L 5433:localhost:5433 conta
   `publisher.py` (channel posting + DB-computed rate limit),
   `formatting.py` (pure message builders), `handlers/commands.py`,
   `handlers/callbacks.py`, `handlers/helpers.py` (admin gate, keyboards).
+- `src/webapp/` — Telegram Mini App admin panel: `auth.py` (initData HMAC
+  validation + admin allowlist; `MINIAPP_DEV_MODE=true` bypasses for local
+  browser testing only), `router.py` (`/admin` page + `/admin/api/*`),
+  `static/index.html` (single-file frontend, Telegram WebApp SDK, Belarusian
+  UI). Mounted in `src/main.py`; `MINIAPP_URL` (HTTPS) adds an open-panel
+  button to the bot.
+- `src/collectors/web_scraper.py` — config-driven site scraping
+  (`data/sources.yaml`), trafilatura full-text extraction, robots.txt,
+  per-source health with auto-disable.
 
 ## Conventions & gotchas
 

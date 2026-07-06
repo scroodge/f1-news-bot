@@ -70,6 +70,12 @@ class Settings(BaseSettings):
     dedup_similarity_threshold: float = 0.90
     dedup_lookback_days: int = 7
 
+    # Telegram Mini App (admin panel)
+    # Public HTTPS URL of the Mini App (Telegram requires TLS); empty = no button
+    miniapp_url: str = ""
+    # DANGER: skips Telegram auth for local browser testing. Never in production.
+    miniapp_dev_mode: bool = False
+
     # Misc
     timezone: str = "Europe/Moscow"
     log_level: str = "INFO"

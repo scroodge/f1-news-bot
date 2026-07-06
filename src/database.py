@@ -240,7 +240,16 @@ class DatabaseManager:
 
     async def update_fields(self, news_id: str, **fields) -> bool:
         """Update editable content fields (title, summary, ...)"""
-        allowed = {"title", "summary", "formatted_content", "tags", "importance_level"}
+        allowed = {
+            "title",
+            "summary",
+            "formatted_content",
+            "tags",
+            "importance_level",
+            "translated_title",
+            "translated_summary",
+            "key_points",
+        }
         unknown = set(fields) - allowed
         if unknown:
             raise ValueError(f"Fields not editable: {unknown}")

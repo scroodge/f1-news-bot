@@ -12,7 +12,7 @@ from ...config import settings
 from ...database import db_manager
 from ...models import NewsStatus
 from ..formatting import format_details, format_published_list, format_queue_page, format_status
-from .helpers import admin_only, get_queue_page, item_keyboard, queue_keyboard
+from .helpers import admin_only, get_queue_page, item_keyboard, miniapp_keyboard, queue_keyboard
 
 logger = logging.getLogger(__name__)
 
@@ -25,15 +25,16 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"⏳ Новостей ждут модерации: {pending}\n\n"
         "Команды: /queue — очередь, /status — статус, /help — справка"
     )
-    keyboard = InlineKeyboardMarkup(
+    rows = [
         [
-            [
-                InlineKeyboardButton("📋 Очередь", callback_data="queue_0"),
-                InlineKeyboardButton("📊 Статус", callback_data="status_refresh"),
-            ]
+            InlineKeyboardButton("📋 Очередь", callback_data="queue_0"),
+            InlineKeyboardButton("📊 Статус", callback_data="status_refresh"),
         ]
-    )
-    await update.message.reply_text(message, reply_markup=keyboard)
+    ]
+    miniapp = miniapp_keyboard()
+    if miniapp:
+        rows.extend(miniapp.inline_keyboard)
+    await update.message.reply_text(message, reply_markup=InlineKeyboardMarkup(rows))
 
 
 @admin_only

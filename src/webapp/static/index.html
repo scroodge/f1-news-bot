@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="be">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>F1 News — мадэрацыя</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<style>
+  :root {
+    --bg: var(--tg-theme-bg-color, #ffffff);
+    --fg: var(--tg-theme-text-color, #111111);
+    --hint: var(--tg-theme-hint-color, #888888);
+    --link: var(--tg-theme-link-color, #2481cc);
+    --btn: var(--tg-theme-button-color, #2481cc);
+    --btn-fg: var(--tg-theme-button-text-color, #ffffff);
+    --card: var(--tg-theme-secondary-bg-color, #f2f2f7);
+  }
+  * { box-sizing: border-box; margin: 0; }
+  body {
+    background: var(--bg); color: var(--fg);
+    font: 15px/1.45 -apple-system, system-ui, Roboto, sans-serif;
+    padding-bottom: 70px;
+  }
+  header {
+    position: sticky; top: 0; z-index: 5; background: var(--bg);
+    padding: 10px 14px 8px; border-bottom: 1px solid var(--card);
+  }
+  h1 { font-size: 17px; }
+  .tabs { display: flex; gap: 6px; margin-top: 8px; }
+  .tab {
+    flex: 1; padding: 7px 4px; border: 0; border-radius: 9px; text-align: center;
+    background: var(--card); color: var(--fg); font-size: 13px; cursor: pointer;
+  }
+  .tab.active { background: var(--btn); color: var(--btn-fg); }
+  main { padding: 12px 14px; display: grid; gap: 12px; }
+  .card {
+    background: var(--card); border-radius: 14px; padding: 12px;
+    display: grid; gap: 10px;
+  }
+  .preview { white-space: pre-wrap; word-break: break-word; font-size: 14px; }
+  .preview img { max-width: 100%; border-radius: 10px; margin-bottom: 8px; }
+  .meta { font-size: 12px; color: var(--hint); display: flex; flex-wrap: wrap; gap: 4px 12px; }
+  .row { display: flex; gap: 8px; }
+  button.action {
+    flex: 1; padding: 10px 6px; border: 0; border-radius: 10px;
+    font-size: 14px; font-weight: 600; cursor: pointer;
+    background: var(--btn); color: var(--btn-fg);
+  }
+  button.secondary { background: var(--bg); color: var(--fg); border: 1px solid var(--hint); font-weight: 400; }
+  button.danger { background: #d33; color: #fff; }
+  button:disabled { opacity: .5; }
+  .editor { display: none; gap: 8px; }
+  .editor.open { display: grid; }
+  .editor label { font-size: 12px; color: var(--hint); }
+  .editor input, .editor textarea {
+    width: 100%; padding: 8px; border-radius: 8px; border: 1px solid var(--hint);
+    background: var(--bg); color: var(--fg); font: inherit;
+  }
+  .editor textarea { min-height: 90px; resize: vertical; }
+  .empty { text-align: center; color: var(--hint); padding: 40px 10px; }
+  .statgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .stat { background: var(--card); border-radius: 12px; padding: 12px; text-align: center; }
+  .stat b { display: block; font-size: 22px; }
+  .stat span { font-size: 12px; color: var(--hint); }
+  .toast {
+    position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%);
+    background: var(--fg); color: var(--bg); padding: 9px 16px; border-radius: 10px;
+    font-size: 13px; opacity: 0; transition: opacity .25s; pointer-events: none; z-index: 10;
+  }
+  .toast.show { opacity: .92; }
+  .histitem { background: var(--card); border-radius: 12px; padding: 10px 12px; }
+  .histitem .t { font-size: 14px; }
+  .histitem .m { font-size: 12px; color: var(--hint); margin-top: 3px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>🏎️ F1 News — мадэрацыя</h1>
+  <div class="tabs">
+    <button class="tab active" data-tab="queue">Чарга <span id="queue-count"></span></button>
+    <button class="tab" data-tab="published">Апублікаванае</button>
+    <button class="tab" data-tab="stats">Статыстыка</button>
+  </div>
+</header>
+<main id="content"><div class="empty">Загрузка…</div></main>
+<div class="toast" id="toast"></div>
+
+<script>
+const tg = window.Telegram?.WebApp;
+tg?.ready(); tg?.expand();
+
+const AUTH = tg?.initData ? { "Authorization": "tma " + tg.initData } : {};
+const API = "/admin/api";
+let activeTab = "queue";
+
+function toast(msg) {
+  const el = document.getElementById("toast");
+  el.textContent = msg; el.classList.add("show");
+  setTimeout(() => el.classList.remove("show"), 2200);
+}
+
+async function call(path, options = {}) {
+  const response = await fetch(API + path, {
+    ...options,
+    headers: { "Content-Type": "application/json", ...AUTH, ...(options.headers || {}) },
+  });
+  if (!response.ok) {
+    const body = await response.json().catch(() => ({}));
+    throw new Error(body.detail || ("HTTP " + response.status));
+  }
+  return response.json();
+}
+
+const esc = (s) => (s || "").replace(/[&<>"]/g, c => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;" }[c]));
+
+// --- queue -----------------------------------------------------------------
+
+function cardHtml(item) {
+  return `
+  <div class="card" data-id="${item.id}">
+    <div class="preview">${item.image_url ? `<img src="${esc(item.image_url)}" loading="lazy" onerror="this.remove()">` : ""}${esc(item.preview)}</div>
+    <div class="meta">
+      <span>📥 ${esc(item.source)}</span>
+      <span>⭐ ${item.importance_level}/5</span>
+      <span>🎯 ${item.relevance_score.toFixed(2)}</span>
+      <span>🌐 ${esc(item.original_language || "?")}</span>
+    </div>
+    <div class="editor" id="edit-${item.id}">
+      <label>Загаловак (BY)</label>
+      <input name="title_be" value="${esc(item.title_be || "")}">
+      <label>Тэкст</label>
+      <textarea name="summary">${esc(item.summary || "")}</textarea>
+      <label>Тэгі (праз коску)</label>
+      <input name="tags" value="${esc((item.tags || []).join(", "))}">
+      <div class="row">
+        <button class="action" data-act="save">💾 Захаваць</button>
+        <button class="action secondary" data-act="cancel">Адмена</button>
+      </div>
+    </div>
+    <div class="row" id="actions-${item.id}">
+      <button class="action" data-act="approve">✅ Апублікаваць</button>
+      <button class="action secondary" data-act="edit">✏️</button>
+      <button class="action danger" data-act="reject">❌</button>
+    </div>
+  </div>`;
+}
+
+async function renderQueue() {
+  const el = document.getElementById("content");
+  const data = await call("/queue");
+  document.getElementById("queue-count").textContent = data.total ? `(${data.total})` : "";
+  if (!data.items.length) {
+    el.innerHTML = `<div class="empty">🏁 Чарга пустая — усё прамадэравана!</div>`;
+    return;
+  }
+  el.innerHTML = data.items.map(cardHtml).join("");
+}
+
+async function handleAction(id, act, card) {
+  const editor = card.querySelector(".editor");
+  if (act === "edit") { editor.classList.toggle("open"); return; }
+  if (act === "cancel") { editor.classList.remove("open"); return; }
+
+  if (act === "save") {
+    const body = {
+      title_be: editor.querySelector('[name="title_be"]').value,
+      summary: editor.querySelector('[name="summary"]').value,
+      tags: editor.querySelector('[name="tags"]').value.split(",").map(t => t.trim()).filter(Boolean),
+    };
+    const updated = await call(`/items/${id}/edit`, { method: "POST", body: JSON.stringify(body) });
+    card.outerHTML = cardHtml(updated);
+    toast("💾 Захавана");
+    tg?.HapticFeedback?.notificationOccurred("success");
+    return;
+  }
+
+  if (act === "approve" || act === "reject") {
+    if (act === "reject" && !confirm("Адхіліць гэтую навіну?")) return;
+    await call(`/items/${id}/${act}`, { method: "POST" });
+    card.style.opacity = ".35"; card.style.pointerEvents = "none";
+    toast(act === "approve" ? "✅ У чарзе на публікацыю" : "❌ Адхілена");
+    tg?.HapticFeedback?.notificationOccurred(act === "approve" ? "success" : "warning");
+    setTimeout(renderQueue, 600);
+  }
+}
+
+// --- history & stats ---------------------------------------------------------
+
+async function renderPublished() {
+  const el = document.getElementById("content");
+  const data = await call("/published");
+  el.innerHTML = data.items.length
+    ? data.items.map(i => `
+      <div class="histitem">
+        <div class="t">${esc(i.title_be || i.title)}</div>
+        <div class="m">${i.published_to_channel_at ? new Date(i.published_to_channel_at).toLocaleString("be") : "—"} · ${esc(i.source)}</div>
+      </div>`).join("")
+    : `<div class="empty">Пакуль нічога не апублікавана.</div>`;
+}
+
+async function renderStats() {
+  const el = document.getElementById("content");
+  const d = await call("/stats");
+  const by = d.stats.by_status || {};
+  el.innerHTML = `
+    <div class="statgrid">
+      <div class="stat"><b>${d.pending}</b><span>⏳ чакаюць мадэрацыі</span></div>
+      <div class="stat"><b>${d.queued}</b><span>📤 у чарзе на публікацыю</span></div>
+      <div class="stat"><b>${d.stats.published_today}</b><span>📅 сёння апублікавана</span></div>
+      <div class="stat"><b>${d.stats.published_this_week}</b><span>🗓 за тыдзень</span></div>
+      <div class="stat"><b>${d.published_last_hour}/${d.max_posts_per_hour}</b><span>🚦 ліміт за гадзіну</span></div>
+      <div class="stat"><b>${d.stats.total_collected}</b><span>📊 усяго сабрана</span></div>
+      <div class="stat"><b>${by.rejected || 0}</b><span>❌ адхілена</span></div>
+      <div class="stat"><b>${by.collected || 0}</b><span>🆕 чакаюць апрацоўкі</span></div>
+    </div>`;
+}
+
+// --- wiring ------------------------------------------------------------------
+
+const renderers = { queue: renderQueue, published: renderPublished, stats: renderStats };
+
+async function show(tab) {
+  activeTab = tab;
+  document.querySelectorAll(".tab").forEach(t => t.classList.toggle("active", t.dataset.tab === tab));
+  document.getElementById("content").innerHTML = `<div class="empty">Загрузка…</div>`;
+  try { await renderers[tab](); }
+  catch (e) { document.getElementById("content").innerHTML = `<div class="empty">⚠️ ${esc(e.message)}</div>`; }
+}
+
+document.querySelector(".tabs").addEventListener("click", (e) => {
+  const tab = e.target.closest(".tab")?.dataset.tab;
+  if (tab) show(tab);
+});
+
+document.getElementById("content").addEventListener("click", async (e) => {
+  const button = e.target.closest("button[data-act]");
+  if (!button) return;
+  const card = button.closest(".card");
+  button.disabled = true;
+  try { await handleAction(card.dataset.id, button.dataset.act, card); }
+  catch (err) { toast("⚠️ " + err.message); }
+  finally { button.disabled = false; }
+});
+
+show("queue");
+setInterval(() => { if (activeTab === "queue") renderQueue().catch(() => {}); }, 60000);
+</script>
+</body>
+</html>
