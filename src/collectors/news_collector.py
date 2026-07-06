@@ -11,6 +11,7 @@ from ..models import NewsItem
 from .base_collector import BaseCollector
 from .rss_collector import RSSCollector
 from .telegram_collector import TelegramCollector
+from .web_scraper import WebScraperCollector
 
 logger = logging.getLogger(__name__)
 
@@ -27,6 +28,7 @@ class NewsCollector:
         self.collectors = {
             "rss": RSSCollector(),
             "telegram": TelegramCollector(),
+            "web": WebScraperCollector(),
         }
         logger.info(f"Initialized {len(self.collectors)} collectors")
 
@@ -143,6 +145,10 @@ class NewsCollector:
                     or collector.last_check > stats["last_collection_time"]
                 ):
                     stats["last_collection_time"] = collector.last_check
+
+        web = self.collectors.get("web")
+        if isinstance(web, WebScraperCollector):
+            stats["scraper_health"] = web.get_health_report()
 
         return stats
 

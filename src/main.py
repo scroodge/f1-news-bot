@@ -77,6 +77,7 @@ class F1NewsBotApp:
                 stats = await db_manager.get_stats()
                 return {
                     "stats": stats.model_dump(),
+                    "collection": await self.news_collector.get_collection_stats(),
                     "uptime": system_monitor.get_uptime_stats(),
                 }
             except Exception as e:

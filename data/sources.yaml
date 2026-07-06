@@ -1,0 +1,48 @@
+# Website scrape sources — config-driven, no code changes to add a source.
+#
+# Fields per source:
+#   name              display name (also used in health tracking)
+#   list_url          the news-listing page to scan for article links
+#   link_pattern      substring an article URL path must contain
+#   exclude_patterns  path substrings that mark non-article pages (categories, pagination)
+#   enabled           set false to turn a source off without deleting it
+#   max_articles      cap of new articles fetched per run (politeness)
+#
+# The scraper respects robots.txt, sends a descriptive User-Agent, waits
+# between article fetches, and auto-disables a source after repeated failures.
+# Patterns verified against the live sites on 2026-07-06.
+
+scrape_sources:
+  - name: formula1.com
+    list_url: https://www.formula1.com/en/latest/all
+    link_pattern: /en/latest/article/
+    enabled: true
+    max_articles: 5
+
+  - name: the-race.com
+    list_url: https://www.the-race.com/formula-1/
+    link_pattern: /formula-1/
+    exclude_patterns: ["/category/", "/page/", "/results/"]
+    enabled: true
+    max_articles: 5
+
+  - name: planetf1.com
+    list_url: https://www.planetf1.com/news
+    link_pattern: /news/
+    exclude_patterns: ["/page/"]
+    enabled: true
+    max_articles: 5
+
+  # Cloudflare bot protection returns 403 to non-browser clients (verified
+  # 2026-07-06). Would need a headless browser (Playwright) — revisit later.
+  - name: autosport.com
+    list_url: https://www.autosport.com/f1/news/
+    link_pattern: /f1/news/
+    enabled: false
+    max_articles: 5
+
+  - name: motorsport.com
+    list_url: https://www.motorsport.com/f1/news/
+    link_pattern: /f1/news/
+    enabled: false
+    max_articles: 5
