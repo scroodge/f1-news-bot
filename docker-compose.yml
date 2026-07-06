@@ -1,9 +1,18 @@
+# One compose file for local and VPS use.
+#
+# Local:  services read .env; postgres is NOT started (profile "vps") —
+#         DATABASE_URL points at the Contabo DB through the SSH tunnel.
+# VPS:    docker compose --profile vps up -d --build
+#         .env sets DATABASE_URL=postgresql://f1_user:...@postgres:5432/f1_news
+#
+# The LLM is remote (dev.offtech.by / Anthropic API) — no Ollama container.
+
+name: f1-news-bot
+
 services:
-  # Redis Cache - используется для межпроцессного взаимодействия
   redis:
-    image: redis:6-alpine
-    ports:
-      - "6379:6379"
+    image: redis:7-alpine
+    restart: unless-stopped
     volumes:
       - redis_data:/data
     healthcheck:
@@ -12,76 +21,60 @@ services:
       timeout: 10s
       retries: 3
 
-  # F1 News Bot - Main Application
-  # Собирает новости и выполняет умную обработку:
-  # - Русские новости: быстрая обработка без AI
-  # - Иностранные новости: полная AI обработка с переводом
+  # Dedicated PostgreSQL — VPS only (profile "vps").
+  # Bound to 127.0.0.1:5433 on the host: reachable via SSH tunnel, not the internet.
+  postgres:
+    image: postgres:17-alpine
+    container_name: f1-news-postgres
+    profiles: ["vps"]
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER:-f1_user}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB:-f1_news}
+    ports:
+      - "127.0.0.1:5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-f1_user} -d ${POSTGRES_DB:-f1_news}"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  # Main app: collection + AI processing + API + Mini App
   f1-news-main:
     build: .
-    ports:
-      - "8000:8000"
+    restart: unless-stopped
+    env_file: .env
     environment:
-      - DATABASE_URL=${DATABASE_URL}
       - REDIS_URL=redis://redis:6379/0
-      - LLM_PROVIDER=${LLM_PROVIDER:-ollama}
-      - LLM_BASE_URL=${LLM_BASE_URL}
-      - LLM_MODEL=${LLM_MODEL:-qwen2.5:14b}
-      - LLM_EMBEDDING_MODEL=${LLM_EMBEDDING_MODEL:-bge-m3:latest}
-      - LLM_API_KEY=${LLM_API_KEY}
-      - LLM_MAX_TOKENS=${LLM_MAX_TOKENS:-512}
-      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
-      - TELEGRAM_CHANNEL_ID=${TELEGRAM_CHANNEL_ID}
-      - TELEGRAM_ADMIN_ID=${TELEGRAM_ADMIN_ID}
-      - TELEGRAM_API_ID=${TELEGRAM_API_ID}
-      - TELEGRAM_API_HASH=${TELEGRAM_API_HASH}
-      - TELEGRAM_PHONE=${TELEGRAM_PHONE}
-      - RSS_FEEDS=${RSS_FEEDS}
-      - TELEGRAM_CHANNELS=${TELEGRAM_CHANNELS}
-      - MIN_RELEVANCE_SCORE=${MIN_RELEVANCE_SCORE:-0.3}
-      - TIMEZONE=${TIMEZONE:-Europe/Minsk}
+    ports:
+      # localhost only — nginx terminates TLS and proxies to this port
+      - "127.0.0.1:${API_PORT:-8000}:8000"
+    volumes:
+      - ./logs:/app/logs
     depends_on:
       redis:
         condition: service_healthy
-    volumes:
-      - ./logs:/app/logs
-      - ./telegram_session.session:/app/telegram_session.session
-    restart: unless-stopped
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
     command: ["python", "start_local.py"]
 
-  # F1 News Bot - Telegram Bot
-  # Отдельный процесс для модерации и публикации новостей
+  # Moderation bot + publisher loop
   f1-news-telegram:
     build: .
+    restart: unless-stopped
+    env_file: .env
     environment:
-      - DATABASE_URL=${DATABASE_URL}
       - REDIS_URL=redis://redis:6379/0
-      - LLM_PROVIDER=${LLM_PROVIDER:-ollama}
-      - LLM_BASE_URL=${LLM_BASE_URL}
-      - LLM_MODEL=${LLM_MODEL:-qwen2.5:14b}
-      - LLM_API_KEY=${LLM_API_KEY}
-      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
-      - TELEGRAM_CHANNEL_ID=${TELEGRAM_CHANNEL_ID}
-      - TELEGRAM_ADMIN_ID=${TELEGRAM_ADMIN_ID}
-      - TIMEZONE=${TIMEZONE:-Europe/Minsk}
+    volumes:
+      - ./logs:/app/logs
     depends_on:
       redis:
         condition: service_healthy
       f1-news-main:
         condition: service_started
-    volumes:
-      - ./logs:/app/logs
-    restart: unless-stopped
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
     command: ["python", "telegram_bot_standalone.py"]
-    healthcheck:
-      test: ["CMD", "python", "-c", "import sys; sys.exit(0)"]
-      interval: 60s
-      timeout: 10s
-      retries: 3
-      start_period: 30s
 
 volumes:
   redis_data:
+  postgres_data:
