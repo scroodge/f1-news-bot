@@ -422,8 +422,13 @@ async function handleAction(id, act, card) {
       }
     } catch (e) {
       clearTimeout(t1); clearTimeout(t2);
-      toast("Памылка: " + e.message);
-      await renderQueue();
+      card.innerHTML = `
+        <div style="text-align:center;padding:24px 16px;color:var(--hint)">
+          <div style="font-size:28px;margin-bottom:8px">⚠️</div>
+          <div style="font-size:14px;margin-bottom:12px">Памылка: ${esc(e.message)}</div>
+          <button class="action ghost" data-act="translate" style="display:inline-block;flex:none;padding:8px 20px">Паўтарыць</button>
+        </div>`;
+      card.style.pointerEvents = "auto";
     }
     return;
   }

@@ -26,12 +26,19 @@ class ContentProcessor:
         self.embeddings = EmbeddingClient()
         self._ollama: OllamaBackend | None = None
         self._claude: ClaudeBackend | None = None
+        self._warmed_up = False
 
     async def initialize(self) -> bool:
         logger.info("Content processor initialized")
-        ollama = self._get_ollama()
-        asyncio.create_task(ollama.warmup())
+        # Background warmup — first translate call will wait if it hasn't finished
+        asyncio.create_task(self._warmup())
         return True
+
+    async def _warmup(self):
+        """Background warmup; translate_news will wait if not done yet."""
+        ollama = self._get_ollama()
+        await ollama.warmup()
+        self._warmed_up = True
 
     def _get_ollama(self) -> OllamaBackend:
         if self._ollama is None:
@@ -100,6 +107,8 @@ class ContentProcessor:
 
     async def translate_news(self, item_id: str, provider: str = "ollama") -> bool:
         """Translate an article using TG12B → Sonnet → analyze pipeline."""
+        if not self._warmed_up:
+            await self._warmup()
         item = await db_manager.get_item(item_id)
         if item is None:
             logger.warning(f"translate_news: item {item_id} not found")
