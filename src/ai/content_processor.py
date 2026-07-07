@@ -5,6 +5,7 @@ Pipeline: TranslateGemma 12B (RU→BE) → Sonnet (polish) → Haiku (analyze).
 No auto-processing loop. Admin triggers actions via the Mini App.
 """
 
+import asyncio
 import logging
 
 from ..config import settings
@@ -28,6 +29,8 @@ class ContentProcessor:
 
     async def initialize(self) -> bool:
         logger.info("Content processor initialized")
+        ollama = self._get_ollama()
+        asyncio.create_task(ollama.warmup())
         return True
 
     def _get_ollama(self) -> OllamaBackend:

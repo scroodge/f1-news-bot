@@ -90,9 +90,27 @@ class OllamaBackend(LLMBackend):
     async def _get_session(self) -> aiohttp.ClientSession:
         if self._session is None or self._session.closed:
             self._session = aiohttp.ClientSession(
-                headers=self._headers(), timeout=aiohttp.ClientTimeout(total=120)
+                headers=self._headers(), timeout=aiohttp.ClientTimeout(total=300)
             )
         return self._session
+
+    async def warmup(self) -> bool:
+        """Pre-load the translation model with a dummy request (cold start takes ~2min)."""
+        try:
+            payload = {
+                "model": self.model,
+                "messages": [{"role": "user", "content": "translate: test"}],
+                "stream": False,
+                "options": {"temperature": 0.0, "num_predict": 2},
+            }
+            session = await self._get_session()
+            async with session.post(f"{self.base_url}/api/chat", json=payload) as response:
+                await response.json()
+            logger.info(f"Translation model {self.model} warmed up")
+            return True
+        except Exception as e:
+            logger.warning(f"Warmup failed (non-fatal): {e}")
+            return False
 
     async def translate(self, title: str, content: str) -> str:
         session = await self._get_session()
