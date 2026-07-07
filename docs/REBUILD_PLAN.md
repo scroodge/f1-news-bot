@@ -1,5 +1,25 @@
 # Rebuild Plan — F1 News Bot 2.0
 
+> ## ✅ Status: completed & deployed (2026-07-06)
+>
+> Phases 0–4 all shipped; the stack runs on the Contabo VPS
+> (`/opt/f1-news-bot`, `docker compose --profile vps`), the Mini App is live
+> at https://f1.mykid.life/admin, and the channel is `@f1scroodge`.
+>
+> **Post-launch pivot (differs from the plan below):** auto-LLM processing
+> was replaced with **admin-triggered AI** — collected items stay in a raw
+> queue ("Новыя" sub-tab) until the admin clicks 🌐 translate (choosing
+> Ollama or Claude per item), then optionally 🔑 key points (always Claude).
+> This gives per-item cost control and lets weak translations be redone.
+> Rule-based auto-rejection (`content_moderator.py`) was dropped with the
+> auto-loop and is now dead code. Token usage per item is tracked in the
+> `llm_usage` column. The bot's notify loop is disabled.
+>
+> Still unbuilt (future ideas): Phase 3b features — race-calendar
+> integration, daily digest, breaking-news fast lane, engagement tracking —
+> plus Phase 4's metrics/alerting polish. The rest of this document is the
+> historical roadmap.
+
 Goal: an F1 news gathering bot that auto-collects from many sources
 (RSS, Telegram channels, **website scrapers**), translates everything that is
 not already **Belarusian** into Belarusian, presents items to the admin in a

@@ -1,215 +1,69 @@
 # 🏎️ F1 News Bot
 
-Автоматический сервис для сбора, обработки и публикации новостей Formula 1 в Telegram канал с использованием AI.
+Collects Formula 1 news from many sources, translates it into **Belarusian**
+with an LLM, and publishes it to the Telegram channel
+[@f1scroodge](https://t.me/f1scroodge) after human moderation in a
+**Telegram Mini App**.
 
-## ✨ Возможности
+```
+RSS feeds ─┐   keyword filter     Mini App admin clicks:
+           ├─→ (dedup by URL  ──→  🌐 translate (Ollama/Claude)
+Websites ──┤   + embeddings)       🔑 generate key points (Claude)
+Telegram ──┘         │             ✏️ edit, ✅ approve ❌ reject
+channels             ▼
+               PostgreSQL: news_items.status lifecycle
+        collected → processed → queued → published / rejected
+                                   │
+                                   ▼  rate-limited publisher (bot process)
+                              Telegram channel
+```
 
-- 🔍 **Сбор новостей** из множества источников (RSS, Telegram каналы)
-- 🤖 **Умная AI обработка** с оптимизацией для русских новостей
-- ⚡ **Быстрая обработка** русских новостей без использования AI
-- 🌍 **Автоматический перевод** иностранных новостей на русский язык
-- 🛡️ **Модерация** и фильтрация контента по релевантности
-- 📱 **Telegram Bot** для управления и публикации
-- 📊 **Мониторинг** системы и статистика
+## How it works
 
-## 🚀 Быстрый старт
+- **Collection** — RSS feeds, config-driven website scrapers
+  (`data/sources.yaml`, trafilatura full-text extraction, robots.txt,
+  per-source health), and optional Telegram-channel monitoring (Telethon).
+  Runs every 30 minutes; URLs dedup on insert, embeddings (bge-m3) catch
+  the same story retold by another outlet.
+- **Admin-triggered AI** — nothing is sent to an LLM automatically. In the
+  Mini App the admin sees the raw queue ("Новыя"), picks a backend per item
+  (remote Ollama qwen2.5:14b or Claude `claude-haiku-4-5` — Claude's
+  Belarusian is far better), reviews/edits the result, optionally generates
+  🔑 key points, then approves. Per-item token usage is stored.
+- **Publishing** — approved items become `queued`; the bot process posts
+  them to the channel respecting `MAX_POSTS_PER_HOUR`.
+- **Moderation UI** — a Telegram Mini App served by the FastAPI app,
+  authenticated with Telegram initData (HMAC) + admin allowlist. The bot's
+  inline commands remain as a fallback.
 
-### Docker (Рекомендуется)
+## Stack
+
+Python 3.11 · FastAPI · async SQLAlchemy + Alembic (PostgreSQL) ·
+python-telegram-bot · Telethon · httpx + trafilatura · remote Ollama +
+Anthropic API · uv / ruff / pytest / GitHub Actions.
+
+## Development
 
 ```bash
-# 1. Клонирование
-git clone https://github.com/yourusername/f1-news-bot.git
-cd f1-news-bot
+uv sync
+ssh -f -N -L 5433:localhost:5433 contabo   # DB tunnel (Postgres lives on the VPS)
+uv run alembic upgrade head
+uv run python start_local.py               # FastAPI + collectors (:8000)
+uv run python telegram_bot_standalone.py   # bot + publisher
 
-# 2. Настройка окружения
-cp config.env.example .env
-# Отредактируйте .env с вашими настройками
-
-# 3. Настройка Telegram авторизации
-chmod +x setup_telegram_docker.sh
-./setup_telegram_docker.sh
-
-# 4. Запуск системы
-docker compose up -d
+uv run ruff check . && uv run pytest       # checks
 ```
 
-### Локальная установка
+Configuration lives in `.env` (see [.env.example](.env.example)).
+Architecture details, conventions, and gotchas: [AGENTS.md](AGENTS.md).
+
+## Production
+
+Deployed on a Contabo VPS at `/opt/f1-news-bot`:
 
 ```bash
-# 1. Клонирование
-git clone https://github.com/yourusername/f1-news-bot.git
-cd f1-news-bot
-
-# 2. Создание виртуального окружения
-python3.11 -m venv venv
-source venv/bin/activate
-
-# 3. Установка зависимостей
-pip install -r requirements.txt
-
-# 4. Настройка окружения
-cp config.env.example .env
-# Отредактируйте .env с вашими настройками
-
-# 5. Запуск системы
-python run_all.py
+docker compose --profile vps up -d --build   # app + bot + redis + postgres
 ```
 
-## 📋 Требования
-
-- **Python 3.11+**
-- **PostgreSQL 12+**
-- **Redis 6+**
-- **Ollama** (для AI обработки)
-- **Telegram Bot Token**
-
-## 🔧 Настройка
-
-### 1. Telegram Bot
-
-1. Создайте бота через [@BotFather](https://t.me/BotFather)
-2. Получите API данные на [my.telegram.org](https://my.telegram.org)
-3. Настройте канал и добавьте бота как администратора
-
-### 2. База данных
-
-```bash
-# PostgreSQL
-sudo -u postgres createdb f1_news
-sudo -u postgres createuser f1_user
-sudo -u postgres psql -c "ALTER USER f1_user PASSWORD 'f1_password';"
-sudo -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE f1_news TO f1_user;"
-```
-
-### 3. Ollama
-
-```bash
-# Установка Ollama
-curl -fsSL https://ollama.ai/install.sh | sh
-
-# Установка модели
-ollama pull llama3.2
-```
-
-## 📁 Структура проекта
-
-```
-src/
-├── ai/                 # AI обработка (Ollama)
-├── collectors/         # Сборщики новостей
-├── telegram_bot/       # Telegram Bot
-├── services/           # Сервисы (Redis)
-├── utils/              # Утилиты
-├── config.py           # Конфигурация
-├── database.py         # База данных
-├── models.py           # Модели данных
-└── main.py             # Основное приложение
-```
-
-## 🎯 Использование
-
-### Telegram Bot команды
-
-- `/start` - начало работы
-- `/help` - справка
-- `/status` - статус системы
-- `/queue` - очередь публикаций
-- `/publish` - публикация новости
-- `/published` - опубликованные новости
-
-### API Endpoints
-
-- `GET /health` - проверка состояния
-- `GET /docs` - документация API
-- `POST /api/collect-news` - запуск сбора новостей
-- `POST /api/process-news` - запуск обработки
-
-## 🐳 Docker
-
-### Управление контейнерами
-
-```bash
-# Запуск
-docker compose up -d
-
-# Просмотр логов
-docker compose logs -f f1-news-main
-docker compose logs -f f1-news-telegram
-
-# Остановка
-docker compose down
-```
-
-### Проверка работы
-
-- **API**: http://localhost:8000
-- **Документация**: http://localhost:8000/docs
-- **Redis**: localhost:6379
-
-## 🔍 Мониторинг
-
-### Логи
-
-```bash
-# Docker
-docker compose logs -f
-
-# Локально
-tail -f logs/f1_news_bot.log
-```
-
-### Статистика
-
-```bash
-curl http://localhost:8000/health
-curl http://localhost:8000/api/stats
-```
-
-## 🚀 Оптимизация производительности
-
-**Умная обработка новостей:**
-- **Русские новости**: Мгновенная обработка без AI
-- **Иностранные новости**: Полная AI обработка с переводом
-- **Релевантность**: Автоматическая оценка по F1-ключевым словам
-
-## 🔧 Troubleshooting
-
-### Частые проблемы
-
-1. **Ollama не отвечает**
-   ```bash
-   curl http://localhost:11434/api/tags
-   ollama serve
-   ```
-
-2. **Ошибки Telegram API**
-   - Проверьте токены в `.env`
-   - Убедитесь, что бот добавлен в канал
-
-3. **Проблемы с базой данных**
-   ```bash
-   psql -d f1_news -c "SELECT 1;"
-   ```
-
-## 📚 Документация
-
-- [**Telegram Bot Integration**](TELEGRAM_BOT_INTEGRATION.md)
-- [**Usage Guide**](USAGE_GUIDE.md)
-- [**Local Setup**](LOCAL_SETUP.md)
-- [**Docker Production**](DOCKER_PRODUCTION.md)
-- [**Telegram Setup**](TELEGRAM_SETUP.md)
-
-## 🤝 Вклад в проект
-
-1. Fork репозитория
-2. Создайте ветку для новой функции
-3. Внесите изменения
-4. Создайте Pull Request
-
-## 📄 Лицензия
-
-MIT License
-
----
-
-**Создано с ❤️ для F1 фанатов**
+nginx terminates TLS for the Mini App at `https://f1.mykid.life/admin`.
+See the Production section of [AGENTS.md](AGENTS.md) for the deploy flow.

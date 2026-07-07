@@ -1,2 +1,3 @@
 See @AGENTS.md for project architecture, conventions, and gotchas.
-Active goal: rebuild per @docs/REBUILD_PLAN.md.
+Status: rebuild complete and deployed (Contabo, https://f1.mykid.life/admin);
+remaining feature ideas live in @docs/REBUILD_PLAN.md.
