@@ -202,8 +202,7 @@ function rawCardHtml(item) {
       <span>🌐 ${esc(item.original_language || "?")}</span>
     </div>
     <div class="row">
-      <button class="action" data-act="translate-ollama">🌐 Ollama</button>
-      <button class="action ghost" data-act="translate-claude">🤖 Claude</button>
+      <button class="action" data-act="translate">🌐 Перакласці</button>
       <button class="action danger ghost" data-act="reject" style="flex:0 0 44px">✕</button>
     </div>
   </div>`;
@@ -252,10 +251,7 @@ function processedCardHtml(item) {
       <button class="action ghost" data-act="edit">✏️</button>
       <button class="action danger ghost" data-act="reject" style="flex:0 0 44px">✕</button>
     </div>
-    <div class="row">
-      <button class="action ghost" data-act="translate-ollama" style="font-size:12px">🌐 Пераперакласці Ollama</button>
-      <button class="action ghost" data-act="translate-claude" style="font-size:12px">🤖 Claude</button>
-    </div>
+    <button class="action ghost" data-act="translate" style="font-size:12px">🌐 Пераперакласці</button>
   </div>`;
 }
 
@@ -386,12 +382,11 @@ async function handleAction(id, act, card) {
     return;
   }
 
-  if (act === "translate-ollama" || act === "translate-claude") {
-    const provider = act === "translate-claude" ? "claude" : "ollama";
+  if (act === "translate") {
     card.style.opacity = ".5"; card.style.pointerEvents = "none";
     card.querySelector(".preview").textContent = "⏳ Пераклад...";
     try {
-      const updated = await call(`/items/${id}/translate?provider=${provider}`, { method: "POST" });
+      const updated = await call(`/items/${id}/translate`, { method: "POST" });
       toast("Пераклад гатовы");
       tg?.HapticFeedback?.notificationOccurred("success");
       if (queueSubTab === "raw") {

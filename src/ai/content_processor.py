@@ -1,10 +1,8 @@
 """
 Content processor: admin-triggered translate + key-points generation.
 
-No auto-processing loop. Items stay COLLECTED until the admin explicitly
-clicks "Translate" in the Mini App — then the chosen LLM backend (Ollama
-or Claude) produces the Belarusian translation. A separate action triggers
-Claude to generate the 🔑 Галоўнае: key points from translated text.
+Pipeline: TranslateGemma 12B (RU→BE) → Sonnet (polish) → Haiku (analyze).
+No auto-processing loop. Admin triggers actions via the Mini App.
 """
 
 import logging
@@ -29,21 +27,20 @@ class ContentProcessor:
         self._claude: ClaudeBackend | None = None
 
     async def initialize(self) -> bool:
-        # Just check embeddings backend is reachable
         logger.info("Content processor initialized")
         return True
 
-    def _get_backend(self, provider: str = "ollama") -> OllamaBackend | ClaudeBackend:
-        if provider == "claude":
-            if self._claude is None:
-                self._claude = ClaudeBackend()
-            return self._claude
+    def _get_ollama(self) -> OllamaBackend:
         if self._ollama is None:
             self._ollama = OllamaBackend()
         return self._ollama
 
+    def _get_claude(self) -> ClaudeBackend:
+        if self._claude is None:
+            self._claude = ClaudeBackend()
+        return self._claude
+
     def _detect_language(self, text: str) -> str:
-        """Coarse source-language detection (stored as original_language)"""
         cyrillic = sum(1 for ch in text if "Ѐ" <= ch <= "ӿ")
         letters = sum(1 for ch in text if ch.isalpha())
         if letters == 0:
@@ -53,8 +50,6 @@ class ContentProcessor:
         return "en"
 
     async def _check_duplicate(self, news_item: NewsItem) -> bool:
-        """Embed the item and reject it when it's a re-telling of a recent story.
-        Returns True when the item was rejected as a duplicate."""
         if not settings.dedup_enabled:
             return False
         embedding = await self.embeddings.embed(f"{news_item.title}\n{news_item.content[:1500]}")
@@ -101,37 +96,46 @@ class ContentProcessor:
         )
 
     async def translate_news(self, item_id: str, provider: str = "ollama") -> bool:
-        """Translate a collected or already-translated item using the chosen LLM backend.
-        Re-translate resets all AI fields (including key_points).
-        Returns True on success, False on failure."""
+        """Translate an article using TG12B → Sonnet → analyze pipeline."""
         item = await db_manager.get_item(item_id)
         if item is None:
             logger.warning(f"translate_news: item {item_id} not found")
             return False
-        # Accept both COLLECTED (first translate) and PROCESSED (re-translate)
         if item.status.value not in ("collected", "processed"):
             logger.warning(f"translate_news: item {item_id} has status {item.status}")
             return False
         try:
             if item.status == NewsStatus.COLLECTED and await self._check_duplicate(item):
                 return False
-            backend = self._get_backend(provider)
-            analysis = await backend.analyze_with_retries(item.title, item.content)
-            if analysis is None:
-                logger.error(f"LLM analysis failed for {item.title[:60]}...")
-                return False
+
+            # Step 1: TranslateGemma 12B RU→BE
+            ollama = self._get_ollama()
+            raw_be = await ollama.translate(item.title, item.content)
+
+            # Step 2: Sonnet polish
+            claude = self._get_claude()
+            title_be, summary_be = await claude.polish(raw_be)
+            polish_usage = claude.last_usage
+
+            # Step 3: Claude analyze (Haiku)
+            analysis = await claude.analyze(title_be, summary_be)
+            total_usage = {
+                "tg12b": ollama.last_usage,
+                "sonnet_polish": polish_usage,
+                "claude_analyze": claude.last_usage,
+            }
+
             processed = self._build_processed_item(item, analysis)
-            await db_manager.mark_processed(item.id, processed, llm_usage=backend.last_usage)
+            await db_manager.mark_processed(item.id, processed, llm_usage=total_usage)
             await redis_service.signal_new_pending()
-            logger.info(f"Translated ({provider}): {analysis.title_be[:60]}...")
+            logger.info(f"Translated (TG12B→Sonnet): {analysis.title_be[:60]}...")
             return True
         except Exception as e:
             logger.error(f"translate_news failed: {e}", exc_info=True)
             return False
 
     async def generate_keypoints(self, item_id: str) -> bool:
-        """Generate 🔑 Галоўнае: key points via Claude for a translated item.
-        Returns True on success."""
+        """Generate 🔑 Галоўнае: key points via Claude for a translated item."""
         item = await db_manager.get_item(item_id)
         if item is None or not isinstance(item, ProcessedNewsItem):
             logger.warning(f"generate_keypoints: item {item_id} not found or not translated")
@@ -139,7 +143,7 @@ class ContentProcessor:
         try:
             title_be = item.translated_title or item.title
             summary_be = item.translated_summary or item.summary
-            backend = self._get_backend("claude")
+            backend = self._get_claude()
             key_points = await backend.generate_key_points(title_be, summary_be)
             await db_manager.update_fields(
                 item_id, key_points=key_points, llm_usage=backend.last_usage

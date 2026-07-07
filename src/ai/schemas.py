@@ -1,10 +1,10 @@
 """
 Structured output schema for news analysis.
 
-One LLM call produces the complete Belarusian-language analysis of a news
-item: translated/rewritten title and summary, key points, tags, sentiment,
-and importance. Both backends (Ollama json_schema and Claude structured
-outputs) validate against this same model.
+Three-stage pipeline:
+1. TranslateGemma 12B — pure RU→BE translation
+2. Sonnet — polish raw translation, produce clean title + summary
+3. Haiku/Sonnet — analyze BE text for key points, tags, sentiment, importance
 """
 
 from typing import Literal
@@ -17,7 +17,7 @@ class NewsAnalysis(BaseModel):
 
     title_be: str = Field(description="Загаловак навіны па-беларуску, кароткі і дакладны")
     summary_be: str = Field(
-        description="Кароткі пераказ навіны па-беларуску, 2-3 сказы, максімум 400 знакаў"
+        description="Кароткі пераказ навіны па-беларуску, 2-3 сказы, максімум 1000 знакаў"
     )
     key_points_be: list[str] = Field(
         default_factory=list,
@@ -62,6 +62,48 @@ class KeyPointsAnalysis(BaseModel):
     )
 
 
+TRANSLATION_PROMPT = """You are a professional Russian (ru) to Belarusian (be) translator. Your goal is to accurately convey the meaning and nuances of the original Russian text while adhering to Belarusian grammar, vocabulary, and cultural sensitivities.
+Produce only the Belarusian translation, without any additional explanations or commentary. Please translate the following Russian text into Belarusian:
+
+
+Загаловак: {title}
+
+Тэкст:
+{content}"""
+
+
+POLISH_PROMPT = """Ты — рэдактар-карэктар беларускамоўнага сайта. Выпраў і структуруй пераклад ніжэй.
+
+ПРАВІЛЫ:
+- Папраў граматычныя і стылістычныя памылкі
+- Правільна напішы назвы камандаў, пілотаў і тэрміны
+- Захавай сэнс арыгінала
+- Зрабі тэкст натуральным для беларускага чытача
+- Выкарыстоўвай нарматыўную беларускую мову
+- Дзеясловы ў інфінітыве на -ць, прошлы час мужчынскага роду на -ў
+- Выкарыстоўвай у/ў па правілах
+
+Пераклад: {raw_be}
+
+ВЫПРАЎЛЕНЫ ТЭКСТ (выключна ў фармаце ніжэй):
+Загаловак: <загаловак па-беларуску>
+Пераказ: <2-3 сказы, макс 1000 знакаў>"""
+
+
+ANALYSIS_PROMPT = """Ты — рэдактар беларускамоўнага навінавага канала пра Формулу-1.
+
+Прааналізуй беларускі тэкст навіны ніжэй:
+1. Вылучы 1-3 галоўныя факты па-беларуску
+2. Вызнач танальнасць (positive/negative/neutral)
+3. Ацані важнасць ад 1 (дробязь) да 5 (сенсацыя)
+4. Дадай 2-5 тэгаў па-беларуску
+
+Загаловак: {title_be}
+
+Тэкст:
+{summary_be}"""
+
+
 KEY_POINTS_PROMPT = """Ты — рэдактар беларускамоўнага навінавага канала пра Формулу-1.
 
 На аснове загалоўка і кароткага зместу навіны вылучы 1-3 галоўныя факты па-беларуску.
@@ -71,18 +113,3 @@ KEY_POINTS_PROMPT = """Ты — рэдактар беларускамоўнаг�
 
 Змест:
 {summary_be}"""
-
-
-ANALYSIS_PROMPT = """Ты — рэдактар беларускамоўнага навінавага канала пра Формулу-1.
-
-Прааналізуй навіну ніжэй і падрыхтуй яе для публікацыі ПА-БЕЛАРУСКУ:
-1. Перакладзі загаловак на беларускую мову (дакладна перадай імёны піл ётаў і каманд: Ферстапен, Хэмілтан, Леклер, Норыс, Пʼястры, Расэл, Феррары, Мэрсэдэс, Рэд Бул, Макларэн).
-2. Напішы кароткі пераказ (2-3 сказы) па-беларуску.
-3. Вылучы 1-3 галоўныя факты.
-4. Вызнач танальнасць (positive/negative/neutral) і важнасць (1-5).
-5. Дадай 2-5 тэгаў па-беларуску.
-
-Загаловак: {title}
-
-Тэкст навіны:
-{content}"""

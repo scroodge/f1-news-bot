@@ -20,7 +20,7 @@ def test_defaults_without_env(monkeypatch):
     assert s.llm_provider == "ollama"
     assert s.llm_model == "qwen2.5:14b"
     assert s.llm_embedding_model == "bge-m3:latest"
-    assert s.llm_max_tokens == 512
+    assert s.llm_max_tokens == 2048
 
 
 def test_llm_settings_from_env(monkeypatch):

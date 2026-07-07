@@ -1,16 +1,11 @@
 """
 Pluggable LLM backends for news analysis.
 
-- OllamaBackend: remote Ollama-compatible server, structured output via the
-  `format` json-schema parameter on /api/chat.
-- ClaudeBackend: Anthropic API via the official SDK, structured output via
-  messages.parse(). Preferred for Belarusian prose quality (see
-  docs/REBUILD_PLAN.md — small open models produce garbled Belarusian).
-- EmbeddingClient: always the Ollama server (bge-m3), regardless of the
-  analysis backend.
-
-Selection: get_llm_backend() honors LLM_PROVIDER; "claude" falls back to
-Ollama with a warning when ANTHROPIC_API_KEY is missing.
+Three-stage pipeline:
+1. OllamaBackend.translate() — TranslateGemma 12B, RU→BE translation
+2. ClaudeBackend.polish() — Sonnet polish, fixes grammar + structures output
+3. ClaudeBackend.analyze() — Haiku analysis, key points + tags + sentiment
+- EmbeddingClient: always the Ollama server (bge-m3), regardless of backend.
 """
 
 import asyncio
@@ -20,11 +15,18 @@ from abc import ABC, abstractmethod
 import aiohttp
 
 from ..config import settings
-from .schemas import ANALYSIS_PROMPT, KEY_POINTS_PROMPT, KeyPointsAnalysis, NewsAnalysis
+from .schemas import (
+    ANALYSIS_PROMPT,
+    KEY_POINTS_PROMPT,
+    POLISH_PROMPT,
+    TRANSLATION_PROMPT,
+    KeyPointsAnalysis,
+    NewsAnalysis,
+)
 
 logger = logging.getLogger(__name__)
 
-MAX_CONTENT_CHARS = 6000  # keep prompts bounded; articles longer than this are truncated
+MAX_CONTENT_CHARS = 6000
 
 
 class LLMBackend(ABC):
@@ -33,14 +35,21 @@ class LLMBackend(ABC):
     name: str = "base"
 
     def __init__(self):
-        self.last_usage: dict = {}  # populated after each analyze/generate call
+        self.last_usage: dict = {}
+
+    async def translate(self, title: str, content: str) -> str:
+        """Translate RU article to raw Belarusian text. Raises on failure."""
+        raise NotImplementedError(f"{self.name} does not support translate()")
+
+    async def polish(self, raw_be: str) -> tuple[str, str]:
+        """Polish raw BE translation. Returns (title_be, summary_be)."""
+        raise NotImplementedError(f"{self.name} does not support polish()")
 
     @abstractmethod
-    async def analyze(self, title: str, content: str) -> NewsAnalysis:
-        """Translate + analyze one news item. Raises on failure."""
+    async def analyze(self, title_be: str, summary_be: str) -> NewsAnalysis:
+        """Analyze already-translated BE text. Raises on failure."""
 
     async def generate_key_points(self, title_be: str, summary_be: str) -> list[str]:
-        """Generate key points from already-translated content. Default: not supported."""
         raise NotImplementedError(f"{self.name} does not support key-points generation")
 
     @abstractmethod
@@ -50,12 +59,11 @@ class LLMBackend(ABC):
         pass
 
     async def analyze_with_retries(
-        self, title: str, content: str, attempts: int = 3
+        self, title_be: str, summary_be: str, attempts: int = 3
     ) -> NewsAnalysis | None:
-        """Retry wrapper with backoff; returns None when all attempts fail"""
         for attempt in range(1, attempts + 1):
             try:
-                return await self.analyze(title, content[:MAX_CONTENT_CHARS])
+                return await self.analyze(title_be, summary_be[:MAX_CONTENT_CHARS])
             except Exception as e:
                 logger.warning(f"[{self.name}] analysis attempt {attempt}/{attempts} failed: {e}")
                 if attempt < attempts:
@@ -64,14 +72,14 @@ class LLMBackend(ABC):
 
 
 class OllamaBackend(LLMBackend):
-    """Remote Ollama-compatible server with json_schema structured output"""
+    """Ollama server with TranslateGemma 12B for RU→BE translation"""
 
     name = "ollama"
 
     def __init__(self):
         super().__init__()
         self.base_url = settings.llm_base_url.rstrip("/")
-        self.model = settings.llm_model
+        self.model = settings.llm_translation_model
         self._session: aiohttp.ClientSession | None = None
 
     def _headers(self) -> dict[str, str]:
@@ -86,18 +94,17 @@ class OllamaBackend(LLMBackend):
             )
         return self._session
 
-    async def analyze(self, title: str, content: str) -> NewsAnalysis:
+    async def translate(self, title: str, content: str) -> str:
         session = await self._get_session()
         payload = {
             "model": self.model,
             "messages": [
-                {"role": "user", "content": ANALYSIS_PROMPT.format(title=title, content=content)}
+                {"role": "user", "content": TRANSLATION_PROMPT.format(title=title, content=content)}
             ],
             "stream": False,
-            "format": NewsAnalysis.model_json_schema(),
             "options": {
                 "temperature": 0.3,
-                "num_predict": settings.llm_max_tokens,
+                "num_predict": 2048,
             },
         }
         async with session.post(f"{self.base_url}/api/chat", json=payload) as response:
@@ -108,7 +115,10 @@ class OllamaBackend(LLMBackend):
             "prompt_tokens": data.get("prompt_eval_count", 0),
             "completion_tokens": data.get("eval_count", 0),
         }
-        return NewsAnalysis.model_validate_json(raw)
+        return raw
+
+    async def analyze(self, title_be: str, summary_be: str) -> NewsAnalysis:
+        raise NotImplementedError("OllamaBackend does not support analyze() — use ClaudeBackend")
 
     async def check_health(self) -> bool:
         try:
@@ -125,7 +135,7 @@ class OllamaBackend(LLMBackend):
 
 
 class ClaudeBackend(LLMBackend):
-    """Anthropic API backend (translation quality for Belarusian)"""
+    """Anthropic API backend — Sonnet for polish, Haiku for analysis"""
 
     name = "claude"
 
@@ -136,26 +146,54 @@ class ClaudeBackend(LLMBackend):
         self.client = AsyncAnthropic(api_key=settings.anthropic_api_key)
         self.model = settings.claude_model
 
-    async def analyze(self, title: str, content: str) -> NewsAnalysis:
+    async def polish(self, raw_be: str) -> tuple[str, str]:
+        """Polish raw BE translation with Sonnet. Returns (title_be, summary_be)."""
+        response = await self.client.messages.create(
+            model="claude-sonnet-4-6",
+            max_tokens=1024,
+            messages=[
+                {"role": "user", "content": POLISH_PROMPT.format(raw_be=raw_be)}
+            ],
+        )
+        text = response.content[0].text
+        title_be = ""
+        summary_be = ""
+        for line in text.split("\n"):
+            if line.startswith("Загаловак:"):
+                title_be = line[len("Загаловак:"):].strip()
+            elif line.startswith("Пераказ:"):
+                summary_be = line[len("Пераказ:"):].strip()
+        self.last_usage = {
+            "prompt_tokens": response.usage.input_tokens,
+            "completion_tokens": response.usage.output_tokens,
+        }
+        return title_be or "Без загалоўка", summary_be or "Без зместу"
+
+    async def analyze(self, title_be: str, summary_be: str) -> NewsAnalysis:
         response = await self.client.messages.parse(
             model=self.model,
             max_tokens=2048,
             messages=[
-                {"role": "user", "content": ANALYSIS_PROMPT.format(title=title, content=content)}
+                {
+                    "role": "user",
+                    "content": ANALYSIS_PROMPT.format(title_be=title_be, summary_be=summary_be),
+                }
             ],
             output_format=NewsAnalysis,
         )
         if response.parsed_output is None:
             raise ValueError(f"Claude returned no parseable output (stop: {response.stop_reason})")
+        result = response.parsed_output
+        result.title_be = title_be
+        result.summary_be = summary_be
         self.last_usage = {
             "prompt_tokens": response.usage.input_tokens,
             "completion_tokens": response.usage.output_tokens,
         }
-        return response.parsed_output
+        return result
 
     async def check_health(self) -> bool:
         try:
-            # Models API round trip validates key + connectivity without sampling
             await self.client.models.retrieve(self.model)
             return True
         except Exception as e:
@@ -163,7 +201,6 @@ class ClaudeBackend(LLMBackend):
             return False
 
     async def generate_key_points(self, title_be: str, summary_be: str) -> list[str]:
-        """Generate 🔑 Галоўнае: key points from already-translated content"""
         response = await self.client.messages.parse(
             model=self.model,
             max_tokens=1024,
@@ -206,7 +243,6 @@ class EmbeddingClient:
         return self._session
 
     async def embed(self, text: str) -> list[float] | None:
-        """Embed one text; returns None on failure (dedup degrades gracefully)"""
         try:
             session = await self._get_session()
             payload = {"model": self.model, "input": text[:2000]}
@@ -222,17 +258,3 @@ class EmbeddingClient:
     async def close(self) -> None:
         if self._session and not self._session.closed:
             await self._session.close()
-
-
-def get_llm_backend() -> LLMBackend:
-    """Backend selection based on LLM_PROVIDER (+ key availability)"""
-    provider = settings.llm_provider.lower()
-    if provider == "claude":
-        if settings.anthropic_api_key:
-            logger.info(f"Using Claude backend ({settings.claude_model})")
-            return ClaudeBackend()
-        logger.warning(
-            "LLM_PROVIDER=claude but ANTHROPIC_API_KEY is empty — falling back to Ollama"
-        )
-    logger.info(f"Using Ollama backend ({settings.llm_model})")
-    return OllamaBackend()

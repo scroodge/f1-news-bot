@@ -47,9 +47,10 @@ class Settings(BaseSettings):
     llm_provider: str = "ollama"  # "ollama" | "claude"
     llm_base_url: str = "https://dev.offtech.by:8444/ollama"
     llm_model: str = "qwen2.5:14b"
+    llm_translation_model: str = "translategemma:12b"
     llm_embedding_model: str = "bge-m3:latest"
     llm_api_key: str = "ollama"
-    llm_max_tokens: int = 512
+    llm_max_tokens: int = 2048
 
     # Claude API (preferred for Belarusian translation quality)
     anthropic_api_key: str = ""

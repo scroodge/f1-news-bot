@@ -190,7 +190,7 @@ async def reject_all_raw():
 
 
 @api.post("/items/{item_id}/translate")
-async def translate_item(item_id: str, provider: str = "ollama"):
+async def translate_item(item_id: str):
     item = await db_manager.get_item(item_id)
     if item is None:
         raise HTTPException(status_code=404, detail="Item not found")
@@ -199,11 +199,11 @@ async def translate_item(item_id: str, provider: str = "ollama"):
             status_code=409, detail="Item cannot be translated in its current state"
         )
     processor = await get_content_processor()
-    ok = await processor.translate_news(item_id, provider=provider)
+    ok = await processor.translate_news(item_id)
     if not ok:
         raise HTTPException(status_code=500, detail="Translation failed")
     updated = await db_manager.get_item(item_id)
-    logger.info(f"Mini App: translated {item_id} with {provider}")
+    logger.info(f"Mini App: translated {item_id}")
     return _serialize(updated)
 
 
