@@ -26,7 +26,7 @@ from .schemas import (
 
 logger = logging.getLogger(__name__)
 
-MAX_CONTENT_CHARS = 6000
+MAX_CONTENT_CHARS = 3000
 
 
 class LLMBackend(ABC):
