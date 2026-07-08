@@ -142,6 +142,18 @@ async def test_edit_nothing_400(client):
     assert response.status_code == 400
 
 
+async def test_edit_long_summary_doesnt_overflow(client):
+    """Edit summary field must accept at least 4000 chars (full translated article)."""
+    http, db = client
+    item_id = await seed_processed(db)
+    long_text = "Тэкст " * 800  # ~4800 chars
+    response = await http.post(
+        f"/admin/api/items/{item_id}/edit",
+        json={"summary": long_text},
+    )
+    assert response.status_code == 200, f"Long summary rejected: {response.text}"
+
+
 async def test_stats_shape(client):
     http, db = client
     await seed_processed(db)
