@@ -429,11 +429,17 @@ async function handleAction(id, act, card) {
       // Poll progress
       const stepOrder = ["warmup","translating","summary","polishing","analyzing","done"];
       let lastStep = "";
+      let idleCount = 0;
       const poll = async () => {
         while (true) {
           await new Promise(r => setTimeout(r, 2000));
           let data;
           try { data = await call(`/items/${id}/progress`); } catch { continue; }
+          if (data.step === "idle") {
+            idleCount++;
+            if (idleCount > 5) throw new Error("Task не запусціўся — паспрабуйце яшчэ раз");
+            continue;
+          }
           const label = stepLabels[data.step] || data.step;
           const stepEl = document.getElementById("progress-step");
           if (stepEl && label !== lastStep) {
@@ -450,6 +456,7 @@ async function handleAction(id, act, card) {
           if (data.finished || data.step === "done" || data.step === "error") {
             if (data.step === "error") throw new Error(data.error || "Translation failed");
             break;
+          }
           }
         }
       };
