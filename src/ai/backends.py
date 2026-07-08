@@ -45,9 +45,9 @@ class LLMBackend(ABC):
         """Polish raw BE translation. Returns (title_be, summary_be)."""
         raise NotImplementedError(f"{self.name} does not support polish()")
 
-    @abstractmethod
     async def analyze(self, title_be: str, summary_be: str) -> NewsAnalysis:
         """Analyze already-translated BE text. Raises on failure."""
+        raise NotImplementedError(f"{self.name} does not support analyze()")
 
     async def generate_key_points(self, title_be: str, summary_be: str) -> list[str]:
         raise NotImplementedError(f"{self.name} does not support key-points generation")
