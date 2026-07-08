@@ -22,8 +22,8 @@ def format_channel_post(item: ProcessedNewsItem) -> str:
         for point in item.key_points[:3]:
             message += f"• {point}\n"
         message += "\n"
-    if item.summary:
-        message += f"{item.summary}\n\n"
+    if item.translated_summary:
+        message += f"{item.translated_summary}\n\n"
     message += f"📰 Крыніца: {item.source}\n"
     message += f"🔗 Чытаць: {item.url}"
     if item.tags:
