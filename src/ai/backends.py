@@ -113,31 +113,63 @@ class OllamaBackend(LLMBackend):
             return False
 
     async def translate(self, title: str, content: str) -> str:
+        """Translate RU article to raw Belarusian text. Uses chunking for long content."""
         session = await self._get_session()
-        truncated = content[:MAX_CONTENT_CHARS] if len(content) > MAX_CONTENT_CHARS else content
+        total_tokens = {"prompt_tokens": 0, "completion_tokens": 0}
+
+        if len(content) <= MAX_CONTENT_CHARS:
+            raw = await self._translate_chunk(session, title, content, total_tokens)
+            self.last_usage = total_tokens
+            return raw
+
+        chunks = self._split_content(content, MAX_CONTENT_CHARS)
+        logger.info(f"TG12B: translating {len(chunks)} chunks ({len(content)} chars)")
+
+        title_be = await self._translate_chunk(session, "", f"Загаловак: {title}", total_tokens)
+        title_be = title_be.replace("Загаловак:", "").strip()
+
+        chunk_results = []
+        for i, chunk in enumerate(chunks):
+            logger.info(f"TG12B: chunk {i + 1}/{len(chunks)} ({len(chunk)} chars)")
+            result = await self._translate_chunk(session, "", chunk, total_tokens)
+            chunk_results.append(result)
+
+        raw = f"Назва: {title_be}\n\nТэкст:\n" + "\n\n".join(chunk_results)
+        self.last_usage = total_tokens
+        return raw
+
+    def _split_content(self, text: str, max_chars: int) -> list[str]:
+        """Split text into chunks at paragraph boundaries."""
+        paragraphs = text.split("\n\n")
+        chunks = []
+        current = ""
+        for para in paragraphs:
+            if len(current) + len(para) + 2 > max_chars and current:
+                chunks.append(current.strip())
+                current = para
+            else:
+                current = current + "\n\n" + para if current else para
+        if current.strip():
+            chunks.append(current.strip())
+        return chunks
+
+    async def _translate_chunk(
+        self, session: aiohttp.ClientSession, title: str, content: str, usage: dict
+    ) -> str:
+        """Translate a single chunk via Ollama API."""
+        prompt_text = TRANSLATION_PROMPT.format(title=title, content=content) if title else content
         payload = {
             "model": self.model,
-            "messages": [
-                {
-                    "role": "user",
-                    "content": TRANSLATION_PROMPT.format(title=title, content=truncated),
-                }
-            ],
+            "messages": [{"role": "user", "content": prompt_text}],
             "stream": False,
-            "options": {
-                "temperature": 0.3,
-                "num_predict": 2048,
-            },
+            "options": {"temperature": 0.3, "num_predict": 2048},
         }
         async with session.post(f"{self.base_url}/api/chat", json=payload) as response:
             response.raise_for_status()
             data = await response.json()
-        raw = data.get("message", {}).get("content", "")
-        self.last_usage = {
-            "prompt_tokens": data.get("prompt_eval_count", 0),
-            "completion_tokens": data.get("eval_count", 0),
-        }
-        return raw
+        usage["prompt_tokens"] += data.get("prompt_eval_count", 0)
+        usage["completion_tokens"] += data.get("eval_count", 0)
+        return data.get("message", {}).get("content", "")
 
     async def analyze(self, title_be: str, summary_be: str) -> NewsAnalysis:
         raise NotImplementedError("OllamaBackend does not support analyze() — use ClaudeBackend")
