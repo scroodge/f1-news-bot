@@ -18,8 +18,7 @@ def format_channel_post(item: ProcessedNewsItem) -> str:
     title = item.translated_title or item.title
     message = f"🏎️ {title}\n\n"
     if item.summary:
-        summary = item.summary[:400] + "..." if len(item.summary) > 400 else item.summary
-        message += f"{summary}\n\n"
+        message += f"{item.summary}\n\n"
     if item.key_points:
         message += "🔑 Галоўнае:\n"
         for point in item.key_points[:3]:

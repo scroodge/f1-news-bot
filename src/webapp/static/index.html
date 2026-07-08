@@ -211,10 +211,11 @@ const esc = (s) => (s || "").replace(/[&<>"]/g, c => ({ "&":"&amp;", "<":"&lt;",
 function rawCardHtml(item) {
   const img = item.image_url ? `<img class="card-img" src="${esc(item.image_url)}" loading="lazy" onerror="this.remove()">` : "";
   const isLong = item.content && item.content.length > 300;
+  const fullPreview = `📰 ${item.title}\n\n${item.content}\n\n🔗 ${item.url}`;
   return `
   <div class="card" data-id="${item.id}">
     ${img}
-    <div class="preview"><div class="preview-collapsed" id="p-${item.id}">${esc(item.preview)}</div>${isLong ? '<button class="expand-btn" data-act="expand-preview" data-target="p-'+item.id+'">📖 Паказаць цалкам</button>' : ''}</div>
+    <div class="preview"><div class="preview-collapsed" id="p-${item.id}">${esc(fullPreview)}</div>${isLong ? '<button class="expand-btn" data-act="expand-preview" data-target="p-'+item.id+'">📖 Паказаць цалкам</button>' : ''}</div>
     <div class="meta">
       <span>📥 ${esc(item.source)}</span>
       <span>🎯 ${item.relevance_score.toFixed(2)}</span>
