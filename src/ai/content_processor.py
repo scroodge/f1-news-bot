@@ -10,6 +10,8 @@ import logging
 import time
 from dataclasses import dataclass, field
 
+import aiohttp
+
 from ..config import settings
 from ..database import db_manager
 from ..models import NewsItem, NewsStatus, ProcessedNewsItem
@@ -31,6 +33,26 @@ class TranslationProgress:
     finished: bool = False
     success: bool = False
     error: str = ""
+
+
+async def _notify_admin(title_be: str, item_id: str):
+    """Send Telegram notification to admin when translation is ready."""
+    if not settings.telegram_bot_token or not settings.telegram_admin_id:
+        return
+    mini_app_url = settings.miniapp_url or "https://f1.mykid.life/admin"
+    text = (
+        f"🌐 Пераклад гатовы!\n\n"
+        f"🏎️ {title_be[:200]}\n\n"
+        f"→ {mini_app_url}"
+    )
+    try:
+        async with aiohttp.ClientSession() as session:
+            await session.post(
+                f"https://api.telegram.org/bot{settings.telegram_bot_token}/sendMessage",
+                json={"chat_id": settings.telegram_admin_id, "text": text, "disable_web_page_preview": True},
+            )
+    except Exception as e:
+        logger.warning(f"Failed to send admin notification: {e}")
 
 
 class ContentProcessor:
@@ -185,6 +207,7 @@ class ContentProcessor:
             progress.detail = "Translation complete"
             progress.finished = True
             progress.success = True
+            asyncio.create_task(_notify_admin(analysis.title_be, item.id))
             return True
         except Exception as e:
             logger.error(f"translate_news failed: {e}", exc_info=True)
