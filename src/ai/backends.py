@@ -27,7 +27,7 @@ from .schemas import (
 
 logger = logging.getLogger(__name__)
 
-MAX_CONTENT_CHARS = 5000
+MAX_CONTENT_CHARS = 4000
 
 
 class LLMBackend(ABC):
@@ -113,7 +113,7 @@ class OllamaBackend(LLMBackend):
             return raw
 
         chunks = self._split_content(content, MAX_CONTENT_CHARS)
-        logger.info(f"TG12B: translating {len(chunks)} chunks ({len(content)} chars, {source_lang})")
+        logger.info(f"TG12B: translating {len(chunks)} chunk{'s' if len(chunks) != 1 else ''} ({len(content)} chars, {source_lang})")
 
         title_be = await self._translate_chunk(session, "", f"Загаловак: {title}", total_tokens, source_label)
         title_be = title_be.replace("Загаловак:", "").strip()
@@ -129,7 +129,7 @@ class OllamaBackend(LLMBackend):
         return raw
 
     def _split_content(self, text: str, max_chars: int) -> list[str]:
-        """Split text into chunks at paragraph boundaries."""
+        """Split text into chunks at paragraph boundaries, falling back to sentence breaks."""
         paragraphs = text.split("\n\n")
         chunks = []
         current = ""
@@ -137,6 +137,16 @@ class OllamaBackend(LLMBackend):
             if len(current) + len(para) + 2 > max_chars and current:
                 chunks.append(current.strip())
                 current = para
+            elif len(para) > max_chars:
+                if current:
+                    chunks.append(current.strip())
+                current = ""
+                for sentence in para.replace(". ", ".\n").split("\n"):
+                    if len(current) + len(sentence) + 1 > max_chars and current:
+                        chunks.append(current.strip())
+                        current = sentence
+                    else:
+                        current = current + " " + sentence if current else sentence
             else:
                 current = current + "\n\n" + para if current else para
         if current.strip():
