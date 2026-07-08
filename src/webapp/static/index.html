@@ -56,7 +56,7 @@
   .card-img { width: 100%; aspect-ratio: 2/1; object-fit: cover; border-radius: var(--radius-sm); margin-bottom: 2px; background: color-mix(in srgb, var(--fg) 6%, transparent); }
   .preview { white-space: pre-wrap; word-break: break-word; font-size: 15px; line-height: 1.55; }
   .preview img { display: none; }
-  .preview-collapsed { max-height: 6em; overflow: hidden; position: relative; }
+  .preview-collapsed { position: relative; }
   .preview-collapsed::after { content: ''; position: absolute; bottom: 0; left: 0; right: 0; height: 2em; background: linear-gradient(transparent, var(--card)); }
   .expand-btn { background: none; border: 0; color: var(--link); font-size: 13px; cursor: pointer; padding: 4px 0; text-align: left; }
   .expand-btn:active { opacity: .6; }

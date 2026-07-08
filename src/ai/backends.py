@@ -169,18 +169,16 @@ class ClaudeBackend(LLMBackend):
         response = await self.client.messages.create(
             model="claude-sonnet-4-6",
             max_tokens=1024,
-            messages=[
-                {"role": "user", "content": POLISH_PROMPT.format(raw_be=raw_be)}
-            ],
+            messages=[{"role": "user", "content": POLISH_PROMPT.format(raw_be=raw_be)}],
         )
         text = response.content[0].text
         title_be = ""
         summary_be = ""
         for line in text.split("\n"):
             if line.startswith("Загаловак:"):
-                title_be = line[len("Загаловак:"):].strip()
+                title_be = line[len("Загаловак:") :].strip()
             elif line.startswith("Пераказ:"):
-                summary_be = line[len("Пераказ:"):].strip()
+                summary_be = line[len("Пераказ:") :].strip()
         self.last_usage = {
             "prompt_tokens": response.usage.input_tokens,
             "completion_tokens": response.usage.output_tokens,
