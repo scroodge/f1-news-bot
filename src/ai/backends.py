@@ -27,7 +27,7 @@ from .schemas import (
 
 logger = logging.getLogger(__name__)
 
-MAX_CONTENT_CHARS = 4000
+MAX_CONTENT_CHARS = 2000
 
 
 class LLMBackend(ABC):
@@ -162,7 +162,7 @@ class OllamaBackend(LLMBackend):
         else:
             prompt_text = f"Перакладзі на беларускую мову ({source_label}):\n\n{content}"
         # Scale num_predict: ~2 tokens per char, with headroom
-        num_predict = max(4096, len(content) * 3)
+        num_predict = min(8192, max(2048, len(content) * 2))
         payload = {
             "model": self.model,
             "messages": [{"role": "user", "content": prompt_text}],
