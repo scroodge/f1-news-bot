@@ -57,6 +57,7 @@ def _serialize(item: ProcessedNewsItem | NewsItem, with_preview: bool = True) ->
         "id": item.id,
         "title": item.title,
         "title_be": item.translated_title if is_processed else None,
+        "content": item.content,
         "summary": item.summary if is_processed else "",
         "key_points": item.key_points if is_processed else [],
         "tags": item.tags if is_processed else [],

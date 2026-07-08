@@ -56,6 +56,10 @@
   .card-img { width: 100%; aspect-ratio: 2/1; object-fit: cover; border-radius: var(--radius-sm); margin-bottom: 2px; background: color-mix(in srgb, var(--fg) 6%, transparent); }
   .preview { white-space: pre-wrap; word-break: break-word; font-size: 15px; line-height: 1.55; }
   .preview img { display: none; }
+  .preview-collapsed { max-height: 6em; overflow: hidden; position: relative; }
+  .preview-collapsed::after { content: ''; position: absolute; bottom: 0; left: 0; right: 0; height: 2em; background: linear-gradient(transparent, var(--card)); }
+  .expand-btn { background: none; border: 0; color: var(--link); font-size: 13px; cursor: pointer; padding: 4px 0; text-align: left; }
+  .expand-btn:active { opacity: .6; }
   .loading-overlay {
     display: flex; flex-direction: column; align-items: center; justify-content: center;
     gap: 12px; padding: 32px 16px; text-align: center;
@@ -206,10 +210,11 @@ const esc = (s) => (s || "").replace(/[&<>"]/g, c => ({ "&":"&amp;", "<":"&lt;",
 
 function rawCardHtml(item) {
   const img = item.image_url ? `<img class="card-img" src="${esc(item.image_url)}" loading="lazy" onerror="this.remove()">` : "";
+  const isLong = item.content && item.content.length > 300;
   return `
   <div class="card" data-id="${item.id}">
     ${img}
-    <div class="preview">${esc(item.preview)}</div>
+    <div class="preview"><div class="preview-collapsed" id="p-${item.id}">${esc(item.preview)}</div>${isLong ? '<button class="expand-btn" data-act="expand-preview" data-target="p-'+item.id+'">📖 Паказаць цалкам</button>' : ''}</div>
     <div class="meta">
       <span>📥 ${esc(item.source)}</span>
       <span>🎯 ${item.relevance_score.toFixed(2)}</span>
@@ -233,7 +238,7 @@ function processedCardHtml(item) {
   return `
   <div class="card" data-id="${item.id}">
     ${img}
-    <div class="preview">${esc(item.preview)}</div>
+    <div class="preview"><div class="preview-collapsed" id="pp-${item.id}">${esc(item.preview)}</div><button class="expand-btn" data-act="expand-preview" data-target="pp-${item.id}">📖 Паказаць цалкам</button></div>
     <div class="meta">
       <span>📥 ${esc(item.source)}</span>
       <span>⭐ ${item.importance_level}/5</span>
@@ -492,6 +497,14 @@ document.getElementById("content").addEventListener("click", async (e) => {
     if (button.dataset.act === "toggle-original") {
       const content = button.nextElementSibling;
       if (content) content.classList.toggle("open");
+      return;
+    }
+    if (button.dataset.act === "expand-preview") {
+      const target = document.getElementById(button.dataset.target);
+      if (target) {
+        target.classList.toggle("preview-collapsed");
+        button.textContent = target.classList.contains("preview-collapsed") ? "📖 Паказаць цалкам" : "📖 Схаваць";
+      }
       return;
     }
     button.disabled = true;
