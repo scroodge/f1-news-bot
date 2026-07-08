@@ -17,6 +17,7 @@ from ..config import settings
 from .schemas import (
     ANALYSIS_PROMPT,
     KEY_POINTS_PROMPT,
+    LANG_LABELS,
     POLISH_PROMPT,
     SUMMARY_PROMPT,
     TRANSLATION_PROMPT,
@@ -26,7 +27,7 @@ from .schemas import (
 
 logger = logging.getLogger(__name__)
 
-MAX_CONTENT_CHARS = 3000
+MAX_CONTENT_CHARS = 5000
 
 
 class LLMBackend(ABC):
@@ -100,26 +101,27 @@ class OllamaBackend(LLMBackend):
             logger.warning(f"Warmup failed (non-fatal): {e}")
             return False
 
-    async def translate(self, title: str, content: str) -> str:
-        """Translate RU article to raw Belarusian text. Uses chunking for long content."""
+    async def translate(self, title: str, content: str, source_lang: str = "ru") -> str:
+        """Translate article to raw Belarusian text. Uses chunking for long content."""
         session = await self._get_session()
         total_tokens = {"prompt_tokens": 0, "completion_tokens": 0}
+        source_label = LANG_LABELS.get(source_lang, "з іншай мовы")
 
         if len(content) <= MAX_CONTENT_CHARS:
-            raw = await self._translate_chunk(session, title, content, total_tokens)
+            raw = await self._translate_chunk(session, title, content, total_tokens, source_label)
             self.last_usage = total_tokens
             return raw
 
         chunks = self._split_content(content, MAX_CONTENT_CHARS)
-        logger.info(f"TG12B: translating {len(chunks)} chunks ({len(content)} chars)")
+        logger.info(f"TG12B: translating {len(chunks)} chunks ({len(content)} chars, {source_lang})")
 
-        title_be = await self._translate_chunk(session, "", f"Загаловак: {title}", total_tokens)
+        title_be = await self._translate_chunk(session, "", f"Загаловак: {title}", total_tokens, source_label)
         title_be = title_be.replace("Загаловак:", "").strip()
 
         chunk_results = []
         for i, chunk in enumerate(chunks):
             logger.info(f"TG12B: chunk {i + 1}/{len(chunks)} ({len(chunk)} chars)")
-            result = await self._translate_chunk(session, "", chunk, total_tokens)
+            result = await self._translate_chunk(session, "", chunk, total_tokens, source_label)
             chunk_results.append(result)
 
         raw = f"Назва: {title_be}\n\nТэкст:\n" + "\n\n".join(chunk_results)
@@ -142,15 +144,20 @@ class OllamaBackend(LLMBackend):
         return chunks
 
     async def _translate_chunk(
-        self, session: aiohttp.ClientSession, title: str, content: str, usage: dict
+        self, session: aiohttp.ClientSession, title: str, content: str, usage: dict, source_label: str = "з рускай (ru)"
     ) -> str:
         """Translate a single chunk via Ollama API."""
-        prompt_text = TRANSLATION_PROMPT.format(title=title, content=content) if title else content
+        if title:
+            prompt_text = TRANSLATION_PROMPT.format(source_lang=source_label, title=title, content=content)
+        else:
+            prompt_text = f"Перакладзі на беларускую мову ({source_label}):\n\n{content}"
+        # Scale num_predict: ~2 tokens per char, with headroom
+        num_predict = max(4096, len(content) * 3)
         payload = {
             "model": self.model,
             "messages": [{"role": "user", "content": prompt_text}],
             "stream": False,
-            "options": {"temperature": 0.3, "num_predict": 2048},
+            "options": {"temperature": 0.3, "num_predict": num_predict},
         }
         async with session.post(f"{self.base_url}/api/chat", json=payload) as response:
             response.raise_for_status()

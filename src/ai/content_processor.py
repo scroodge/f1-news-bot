@@ -145,11 +145,12 @@ class ContentProcessor:
 
             progress = self._progress.setdefault(item_id, TranslationProgress())
 
-            # Step 1: TranslateGemma 12B RU→BE
+            # Step 1: TranslateGemma 12B → BE
             progress.step = "translating"
             progress.detail = "Translating with TG12B..."
+            source_lang = self._detect_language(f"{item.title} {item.content}")
             ollama = self._get_ollama()
-            raw_be = await ollama.translate(item.title, item.content)
+            raw_be = await ollama.translate(item.title, item.content, source_lang=source_lang)
 
             # Step 2: TG12B generates short summary for channel preview (free)
             progress.step = "summary"

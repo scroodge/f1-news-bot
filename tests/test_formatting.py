@@ -52,8 +52,7 @@ def test_channel_post_limits_key_points():
 
 def test_channel_post_truncates_long_summary():
     post = format_channel_post(make_item(summary="х" * 500))
-    assert "х" * 400 + "..." in post  # first 400 chars with separator
-    assert "х" * 100 in post  # rest in accordion
+    assert "х" * 500 in post  # full text, no truncation
 
 
 def test_details_show_both_titles():
