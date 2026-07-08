@@ -204,7 +204,7 @@ class ClaudeBackend(LLMBackend):
         """Polish raw BE translation with Sonnet. Returns (title_be, summary_be)."""
         response = await self.client.messages.create(
             model="claude-sonnet-4-6",
-            max_tokens=1024,
+            max_tokens=4096,
             messages=[{"role": "user", "content": POLISH_PROMPT.format(raw_be=raw_be)}],
         )
         text = response.content[0].text
@@ -213,8 +213,22 @@ class ClaudeBackend(LLMBackend):
         for line in text.split("\n"):
             if line.startswith("Загаловак:"):
                 title_be = line[len("Загаловак:") :].strip()
-            elif line.startswith("Пераказ:"):
-                summary_be = line[len("Пераказ:") :].strip()
+            elif line.startswith("Тэкст:"):
+                summary_be = line[len("Тэкст:") :].strip()
+        if not summary_be:
+            lines = text.split("\n")
+            in_text = False
+            collected = []
+            for line in lines:
+                if line.startswith("Тэкст:"):
+                    in_text = True
+                    rest = line[len("Тэкст:") :].strip()
+                    if rest:
+                        collected.append(rest)
+                    continue
+                if in_text:
+                    collected.append(line)
+            summary_be = "\n".join(collected).strip()
         self.last_usage = {
             "prompt_tokens": response.usage.input_tokens,
             "completion_tokens": response.usage.output_tokens,
