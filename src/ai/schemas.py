@@ -62,56 +62,29 @@ class KeyPointsAnalysis(BaseModel):
     )
 
 
-TRANSLATION_PROMPT = """You are a professional Russian (ru) to Belarusian (be) translator. Your goal is to accurately convey the meaning and nuances of the original Russian text while adhering to Belarusian grammar, vocabulary, and cultural sensitivities.
-Produce only the Belarusian translation, without any additional explanations or commentary. Please translate the following Russian text into Belarusian:
+TRANSLATION_PROMPT = """You are a professional Russian (ru) to Belarusian (be) translator.
 
+Translate the following Russian text into Belarusian. Produce ONLY the translation, no explanations.
 
 Загаловак: {title}
 
 Тэкст:
 {content}"""
 
-
-POLISH_PROMPT = """Ты — рэдактар-карэктар беларускамоўнага сайта. Выпраў і структуруй пераклад ніжэй.
-
-ПРАВІЛЫ:
-- Папраў граматычныя і стылістычныя памылкі
-- Правільна напішы назвы камандаў, пілотаў і тэрміны
-- Захавай сэнс арыгінала
-- Зрабі тэкст натуральным для беларускага чытача
-- Выкарыстоўвай нарматыўную беларускую мову
-- Дзеясловы ў інфінітыве на -ць, прошлы час мужчынскага роду на -ў
-- Выкарыстоўвай у/ў па правілах
-- Захавай УВЁСЬ тэкст перакладу, не скарачай
-
-Пераклад: {raw_be}
-
-ВЫПРАЎЛЕНЫ ТЭКСТ (выключна ў фармаце ніжэй):
-Загаловак: <загаловак па-беларуску>
-Тэкст: <поўны выпраўлены пераклад>"""
-
-
-ANALYSIS_PROMPT = """Ты — рэдактар беларускамоўнага навінавага канала пра Формулу-1.
-
-Прааналізуй беларускі тэкст навіны ніжэй:
-1. Захавай поўны тэкст перакладу ў полі summary_be (без змен)
-2. Вылучы 1-3 галоўныя факты па-беларуску (кароткія сказы)
-3. Вызнач танальнасць (positive/negative/neutral)
-4. Ацані важнасць ад 1 (дробязь) да 5 (сенсацыя)
-5. Дадай 2-5 тэгаў па-беларуску
-
-Загаловак: {title_be}
+SUMMARY_PROMPT = """Напішы кароткі пераказ (2-3 сказы) гэтага беларускага тэксту навіны. Толькі факты, без каментарыяў.
 
 Тэкст:
-{summary_be}"""
+{content}"""
 
+ANALYSIS_PROMPT_TG12B = """Ты — рэдактар беларускамоўнага навінавага канала пра Формулу-1.
 
-KEY_POINTS_PROMPT = """Ты — рэдактар беларускамоўнага навінавага канала пра Формулу-1.
+Прааналізуй беларускі тэкст навіны ніжэй і вярні JSON з полямі:
+- key_points_be: 1-3 галоўныя факты, кожны адным кароткім сказам
+- tags_be: 2-5 тэгаў
+- sentiment: positive/negative/neutral
+- importance_level: ад 1 да 5
 
-На аснове загалоўка і кароткага зместу навіны вылучы 1-3 галоўныя факты па-беларуску.
-Кожны факт — адзін кароткі сказ.
+Загаловак: {title}
 
-Загаловак: {title_be}
-
-Змест:
-{summary_be}"""
+Тэкст:
+{content}"""

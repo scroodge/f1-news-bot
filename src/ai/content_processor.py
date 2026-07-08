@@ -78,7 +78,11 @@ class ContentProcessor:
         return True
 
     def _build_processed_item(
-        self, news_item: NewsItem, analysis: NewsAnalysis
+        self,
+        news_item: NewsItem,
+        analysis: NewsAnalysis,
+        sonnet_summary: str = "",
+        short_summary: str = "",
     ) -> ProcessedNewsItem:
         return ProcessedNewsItem(
             id=news_item.id,
@@ -94,13 +98,13 @@ class ContentProcessor:
             image_url=news_item.image_url,
             video_url=news_item.video_url,
             media_type=news_item.media_type,
-            summary=analysis.summary_be,
+            summary=short_summary or sonnet_summary or analysis.summary_be,
             key_points=analysis.key_points_be,
             sentiment=analysis.sentiment,
             importance_level=analysis.importance_level,
             tags=analysis.tags_be,
             translated_title=analysis.title_be,
-            translated_summary=analysis.summary_be,
+            translated_summary=sonnet_summary or analysis.summary_be,
             translated_key_points=analysis.key_points_be,
             original_language=self._detect_language(f"{news_item.title} {news_item.content}"),
         )
@@ -124,20 +128,34 @@ class ContentProcessor:
             ollama = self._get_ollama()
             raw_be = await ollama.translate(item.title, item.content)
 
-            # Step 2: Sonnet polish
+            # Step 2: TG12B generates short summary + analysis (free)
+            short_summary = await ollama.generate_summary(raw_be)
+            analysis_raw = await ollama.generate_analysis(item.title, raw_be)
+
+            # Step 3: Sonnet polish (full text only)
             claude = self._get_claude()
             title_be, summary_be = await claude.polish(raw_be)
             polish_usage = claude.last_usage
 
-            # Step 3: Claude analyze (Haiku)
-            analysis = await claude.analyze(title_be, summary_be)
+            # Build processed item with TG12B analysis + Sonnet polished text
+            from ..ai.schemas import NewsAnalysis
+
+            analysis = NewsAnalysis(
+                title_be=title_be,
+                summary_be=summary_be,
+                key_points_be=analysis_raw.get("key_points_be", []),
+                sentiment=analysis_raw.get("sentiment", "neutral"),
+                importance_level=analysis_raw.get("importance_level", 3),
+                tags_be=analysis_raw.get("tags_be", []),
+            )
             total_usage = {
                 "tg12b": ollama.last_usage,
                 "sonnet_polish": polish_usage,
-                "claude_analyze": claude.last_usage,
             }
 
-            processed = self._build_processed_item(item, analysis)
+            processed = self._build_processed_item(
+                item, analysis, sonnet_summary=summary_be, short_summary=short_summary
+            )
             await db_manager.mark_processed(item.id, processed, llm_usage=total_usage)
             await redis_service.signal_new_pending()
             logger.info(f"Translated (TG12B→Sonnet): {analysis.title_be[:60]}...")
@@ -147,7 +165,7 @@ class ContentProcessor:
             return False
 
     async def generate_keypoints(self, item_id: str) -> bool:
-        """Generate 🔑 Галоўнае: key points via Claude for a translated item."""
+        """Regenerate key points via TG12B for a translated item."""
         item = await db_manager.get_item(item_id)
         if item is None or not isinstance(item, ProcessedNewsItem):
             logger.warning(f"generate_keypoints: item {item_id} not found or not translated")
@@ -155,12 +173,16 @@ class ContentProcessor:
         try:
             title_be = item.translated_title or item.title
             summary_be = item.translated_summary or item.summary
-            backend = self._get_claude()
-            key_points = await backend.generate_key_points(title_be, summary_be)
+            ollama = self._get_ollama()
+            analysis_raw = await ollama.generate_analysis(title_be, summary_be)
             await db_manager.update_fields(
-                item_id, key_points=key_points, llm_usage=backend.last_usage
+                item_id,
+                key_points=analysis_raw.get("key_points_be", []),
+                tags=analysis_raw.get("tags_be", []),
+                sentiment=analysis_raw.get("sentiment", "neutral"),
+                importance_level=analysis_raw.get("importance_level", 3),
             )
-            logger.info(f"Key points generated for {title_be[:60]}...")
+            logger.info(f"Key points regenerated for {title_be[:60]}...")
             return True
         except Exception as e:
             logger.error(f"generate_keypoints failed: {e}", exc_info=True)
