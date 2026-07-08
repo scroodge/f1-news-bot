@@ -90,7 +90,7 @@ class OllamaBackend(LLMBackend):
     async def _get_session(self) -> aiohttp.ClientSession:
         if self._session is None or self._session.closed:
             self._session = aiohttp.ClientSession(
-                headers=self._headers(), timeout=aiohttp.ClientTimeout(total=300)
+                headers=self._headers(), timeout=aiohttp.ClientTimeout(total=600)
             )
         return self._session
 
@@ -114,10 +114,14 @@ class OllamaBackend(LLMBackend):
 
     async def translate(self, title: str, content: str) -> str:
         session = await self._get_session()
+        truncated = content[:MAX_CONTENT_CHARS] if len(content) > MAX_CONTENT_CHARS else content
         payload = {
             "model": self.model,
             "messages": [
-                {"role": "user", "content": TRANSLATION_PROMPT.format(title=title, content=content)}
+                {
+                    "role": "user",
+                    "content": TRANSLATION_PROMPT.format(title=title, content=truncated),
+                }
             ],
             "stream": False,
             "options": {
