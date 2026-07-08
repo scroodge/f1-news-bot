@@ -241,7 +241,7 @@ function processedCardHtml(item) {
   return `
   <div class="card" data-id="${item.id}">
     ${img}
-    <div class="preview"><div class="preview-collapsed" id="pp-${item.id}">${esc(item.preview)}</div><button class="expand-btn" data-act="expand-preview" data-target="pp-${item.id}">📖 Паказаць цалкам</button></div>
+    <div class="preview"><div class="preview-collapsed" id="pp-${item.id}">${esc(item.preview)}</div><button class="expand-btn" data-act="expand-preview" data-target="pp-${item.id}" data-full="${esc(item.summary || item.preview)}">📖 Паказаць цалкам</button></div>
     <div class="meta">
       <span>📥 ${esc(item.source)}</span>
       <span>⭐ ${item.importance_level}/5</span>
