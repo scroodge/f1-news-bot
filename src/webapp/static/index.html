@@ -199,7 +199,8 @@ async function call(path, options = {}) {
   });
   if (!response.ok) {
     const body = await response.json().catch(() => ({}));
-    throw new Error(body.detail || ("HTTP " + response.status));
+    const msg = Array.isArray(body.detail) ? body.detail.map(d => d.msg).join("; ") : body.detail;
+    throw new Error(msg || ("HTTP " + response.status));
   }
   return response.json();
 }
@@ -510,7 +511,7 @@ async function show(tab) {
   document.querySelectorAll(".tab").forEach(t => t.classList.toggle("active", t.dataset.tab === tab));
   document.getElementById("content").innerHTML = `<div class="empty">Загрузка…</div>`;
   try { await renderers[tab](); }
-  catch (e) { document.getElementById("content").innerHTML = `<div class="empty">Памылка: ${esc(e.message)}</div>`; }
+  catch (e) { document.getElementById("content").innerHTML = `<div class="empty">Памылка: ${esc(e.message || e)}</div>`; }
 }
 
 document.querySelector(".tabs").addEventListener("click", (e) => {
@@ -564,7 +565,7 @@ document.getElementById("content").addEventListener("click", async (e) => {
       await handleAction(card.dataset.id, button.dataset.act, card);
     }
   }
-  catch (err) { toast("Памылка: " + err.message); }
+  catch (err) { toast("Памылка: " + (err.message || err)); }
   finally { button.disabled = false; }
 });
 

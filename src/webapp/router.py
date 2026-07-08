@@ -95,7 +95,7 @@ def _serialize(item: ProcessedNewsItem | NewsItem, with_preview: bool = True) ->
 
 class EditRequest(BaseModel):
     title_be: str | None = Field(default=None, max_length=300)
-    summary: str | None = Field(default=None, max_length=2000)
+    summary: str | None = Field(default=None, max_length=8000)
     key_points: list[str] | None = None
     tags: list[str] | None = None
     importance_level: int | None = Field(default=None, ge=1, le=5)
