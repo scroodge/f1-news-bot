@@ -8,7 +8,6 @@ Three-stage pipeline:
 - EmbeddingClient: always the Ollama server (bge-m3), regardless of backend.
 """
 
-import asyncio
 import logging
 from abc import ABC, abstractmethod
 
@@ -20,7 +19,6 @@ from .schemas import (
     POLISH_PROMPT,
     SUMMARY_PROMPT,
     TRANSLATION_PROMPT,
-    NewsAnalysis,
 )
 
 logger = logging.getLogger(__name__)
@@ -44,10 +42,6 @@ class LLMBackend(ABC):
         """Polish raw BE translation. Returns (title_be, summary_be)."""
         raise NotImplementedError(f"{self.name} does not support polish()")
 
-    @abstractmethod
-    async def analyze(self, title_be: str, summary_be: str) -> NewsAnalysis:
-        """Analyze already-translated BE text. Raises on failure."""
-
     async def generate_key_points(self, title_be: str, summary_be: str) -> list[str]:
         raise NotImplementedError(f"{self.name} does not support key-points generation")
 
@@ -56,18 +50,6 @@ class LLMBackend(ABC):
 
     async def close(self) -> None:  # noqa: B027 — optional hook, not abstract
         pass
-
-    async def analyze_with_retries(
-        self, title_be: str, summary_be: str, attempts: int = 3
-    ) -> NewsAnalysis | None:
-        for attempt in range(1, attempts + 1):
-            try:
-                return await self.analyze(title_be, summary_be[:MAX_CONTENT_CHARS])
-            except Exception as e:
-                logger.warning(f"[{self.name}] analysis attempt {attempt}/{attempts} failed: {e}")
-                if attempt < attempts:
-                    await asyncio.sleep(2**attempt)
-        return None
 
 
 class OllamaBackend(LLMBackend):
