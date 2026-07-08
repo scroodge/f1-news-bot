@@ -17,13 +17,13 @@ def format_channel_post(item: ProcessedNewsItem) -> str:
     """The post exactly as it goes to the channel — Belarusian output"""
     title = item.translated_title or item.title
     message = f"🏎️ {title}\n\n"
-    if item.summary:
-        message += f"{item.summary}\n\n"
     if item.key_points:
         message += "🔑 Галоўнае:\n"
         for point in item.key_points[:3]:
             message += f"• {point}\n"
         message += "\n"
+    if item.summary:
+        message += f"{item.summary}\n\n"
     message += f"📰 Крыніца: {item.source}\n"
     message += f"🔗 Чытаць: {item.url}"
     if item.tags:
