@@ -6,6 +6,7 @@ State transitions reuse the same DatabaseManager the bot uses — approving
 here queues the item for the bot process's publisher loop.
 """
 
+import asyncio
 import logging
 from pathlib import Path
 
@@ -201,12 +202,34 @@ async def translate_item(item_id: str):
             status_code=409, detail="Item cannot be translated in its current state"
         )
     processor = await get_content_processor()
-    ok = await processor.translate_news(item_id)
-    if not ok:
-        raise HTTPException(status_code=500, detail="Translation failed")
-    updated = await db_manager.get_item(item_id)
-    logger.info(f"Mini App: translated {item_id}")
-    return _serialize(updated)
+    # Run translation in background, return immediately
+    asyncio.create_task(_run_translate(item_id, processor))
+    return {"ok": True, "status": "started"}
+
+
+async def _run_translate(item_id: str, processor):
+    """Background task for translation."""
+    try:
+        await processor.translate_news(item_id)
+    except Exception as e:
+        logger.error(f"Background translate failed for {item_id}: {e}")
+
+
+@api.get("/items/{item_id}/progress")
+async def translate_progress(item_id: str):
+    processor = await get_content_processor()
+    prog = processor.get_progress(item_id)
+    if prog is None:
+        return {"step": "idle", "detail": "", "finished": False}
+    return {
+        "step": prog.step,
+        "detail": prog.detail,
+        "chunk_current": prog.chunk_current,
+        "chunk_total": prog.chunk_total,
+        "finished": prog.finished,
+        "success": prog.success,
+        "error": prog.error,
+    }
 
 
 @api.post("/items/{item_id}/generate-keypoints")

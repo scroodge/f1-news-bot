@@ -406,30 +406,63 @@ async function handleAction(id, act, card) {
 
   if (act === "translate") {
     card.style.opacity = "1"; card.style.pointerEvents = "none";
+    const stepLabels = {
+      warmup: "⚙️ Загрузка мадэлі...",
+      translating: "🌐 Пераклад (TranslateGemma…)",
+      summary: "📝 Кароткае рэзюмэ...",
+      polishing: "✨ Паліроўка (Sonnet…)",
+      analyzing: "🔍 Аналіз (Haiku…)",
+      done: "✅ Гатова!",
+      error: "❌ Памылка",
+    };
     card.innerHTML = `
       <div class="loading-overlay">
         <div class="spinner"></div>
-        <div class="step" id="step1">⏳ Пераклад (TranslateGemma…)</div>
-        <div class="step" id="step2">⏳ Паліроўка (Sonnet…)</div>
-        <div class="step" id="step3">⏳ Аналіз (Claude…)</div>
+        <div class="step active" id="progress-step">⏳ Пачатак...</div>
+        <div class="progress-bar-container" style="margin-top:12px;width:100%;max-width:300px;height:6px;background:var(--border);border-radius:3px;overflow:hidden">
+          <div id="progress-fill" style="height:100%;width:0%;background:var(--accent);border-radius:3px;transition:width 0.5s ease"></div>
+        </div>
       </div>`;
-    const s = (id, active) => { const e = document.getElementById(id); if (e) e.className = "step" + (active ? " active" : ""); };
-    s("step1", true);
-    const t1 = setTimeout(() => { s("step1", false); s("step2", true); }, 35000);
-    const t2 = setTimeout(() => { s("step2", false); s("step3", true); }, 55000);
     try {
-      const updated = await call(`/items/${id}/translate`, { method: "POST" });
-      clearTimeout(t1); clearTimeout(t2);
+      await call(`/items/${id}/translate`, { method: "POST" });
+      // Poll progress
+      const stepOrder = ["warmup","translating","summary","polishing","analyzing","done"];
+      let lastStep = "";
+      const poll = async () => {
+        while (true) {
+          await new Promise(r => setTimeout(r, 2000));
+          let data;
+          try { data = await call(`/items/${id}/progress`); } catch { continue; }
+          const label = stepLabels[data.step] || data.step;
+          const stepEl = document.getElementById("progress-step");
+          if (stepEl && label !== lastStep) {
+            stepEl.textContent = label;
+            lastStep = label;
+          }
+          const fill = document.getElementById("progress-fill");
+          if (fill) {
+            const idx = stepOrder.indexOf(data.step);
+            const pct = data.step === "error" ? 100 : Math.max(5, ((idx + 1) / stepOrder.length) * 100);
+            fill.style.width = pct + "%";
+            if (data.step === "error") fill.style.background = "var(--danger)";
+          }
+          if (data.finished || data.step === "done" || data.step === "error") {
+            if (data.step === "error") throw new Error(data.error || "Translation failed");
+            break;
+          }
+        }
+      };
+      await poll();
       toast("Пераклад гатовы");
       tg?.HapticFeedback?.notificationOccurred("success");
       if (queueSubTab === "raw") {
         await renderQueue();
       } else {
+        const updated = await call(`/items/${id}`);
         card.outerHTML = processedCardHtml(updated);
         editingId = null;
       }
     } catch (e) {
-      clearTimeout(t1); clearTimeout(t2);
       card.innerHTML = `
         <div style="text-align:center;padding:24px 16px;color:var(--hint)">
           <div style="font-size:28px;margin-bottom:8px">⚠️</div>

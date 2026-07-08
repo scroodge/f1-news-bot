@@ -7,6 +7,8 @@ No auto-processing loop. Admin triggers actions via the Mini App.
 
 import asyncio
 import logging
+import time
+from dataclasses import dataclass, field
 
 from ..config import settings
 from ..database import db_manager
@@ -19,6 +21,18 @@ from .schemas import NewsAnalysis
 logger = logging.getLogger(__name__)
 
 
+@dataclass
+class TranslationProgress:
+    step: str = "starting"
+    detail: str = ""
+    chunk_current: int = 0
+    chunk_total: int = 0
+    started_at: float = field(default_factory=time.time)
+    finished: bool = False
+    success: bool = False
+    error: str = ""
+
+
 class ContentProcessor:
     """Admin-triggered content processing (translate + key points)"""
 
@@ -27,6 +41,10 @@ class ContentProcessor:
         self._ollama: OllamaBackend | None = None
         self._claude: ClaudeBackend | None = None
         self._warmed_up = False
+        self._progress: dict[str, TranslationProgress] = {}
+
+    def get_progress(self, item_id: str) -> TranslationProgress | None:
+        return self._progress.get(item_id)
 
     async def initialize(self) -> bool:
         logger.info("Content processor initialized")
@@ -112,6 +130,7 @@ class ContentProcessor:
     async def translate_news(self, item_id: str, provider: str = "ollama") -> bool:
         """Translate an article using TG12B → Sonnet → analyze pipeline."""
         if not self._warmed_up:
+            self._progress[item_id] = TranslationProgress(step="warmup", detail="Loading TG12B model...")
             await self._warmup()
         item = await db_manager.get_item(item_id)
         if item is None:
@@ -124,19 +143,29 @@ class ContentProcessor:
             if item.status == NewsStatus.COLLECTED and await self._check_duplicate(item):
                 return False
 
+            progress = self._progress.setdefault(item_id, TranslationProgress())
+
             # Step 1: TranslateGemma 12B RU→BE
+            progress.step = "translating"
+            progress.detail = "Translating with TG12B..."
             ollama = self._get_ollama()
             raw_be = await ollama.translate(item.title, item.content)
 
             # Step 2: TG12B generates short summary for channel preview (free)
+            progress.step = "summary"
+            progress.detail = "Generating short summary..."
             short_summary = await ollama.generate_summary(raw_be)
 
             # Step 3: Sonnet polish (full text only)
+            progress.step = "polishing"
+            progress.detail = "Polishing with Sonnet..."
             claude = self._get_claude()
             title_be, summary_be = await claude.polish(raw_be)
             polish_usage = claude.last_usage
 
             # Step 4: Haiku analyzes (key points, tags, sentiment) — does NOT touch summary
+            progress.step = "analyzing"
+            progress.detail = "Analyzing with Haiku..."
             analysis = await claude.analyze(title_be, summary_be)
             total_usage = {
                 "tg12b": ollama.last_usage,
@@ -150,9 +179,20 @@ class ContentProcessor:
             await db_manager.mark_processed(item.id, processed, llm_usage=total_usage)
             await redis_service.signal_new_pending()
             logger.info(f"Translated (TG12B→Sonnet): {analysis.title_be[:60]}...")
+
+            progress.step = "done"
+            progress.detail = "Translation complete"
+            progress.finished = True
+            progress.success = True
             return True
         except Exception as e:
             logger.error(f"translate_news failed: {e}", exc_info=True)
+            progress = self._progress.get(item_id)
+            if progress:
+                progress.step = "error"
+                progress.detail = str(e)[:200]
+                progress.finished = True
+                progress.error = str(e)[:200]
             return False
 
     async def generate_keypoints(self, item_id: str) -> bool:
