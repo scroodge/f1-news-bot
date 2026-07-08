@@ -457,7 +457,6 @@ async function handleAction(id, act, card) {
             if (data.step === "error") throw new Error(data.error || "Translation failed");
             break;
           }
-          }
         }
       };
       await poll();
