@@ -128,29 +128,20 @@ class ContentProcessor:
             ollama = self._get_ollama()
             raw_be = await ollama.translate(item.title, item.content)
 
-            # Step 2: TG12B generates short summary + analysis (free)
+            # Step 2: TG12B generates short summary for channel preview (free)
             short_summary = await ollama.generate_summary(raw_be)
-            analysis_raw = await ollama.generate_analysis(item.title, raw_be)
 
             # Step 3: Sonnet polish (full text only)
             claude = self._get_claude()
             title_be, summary_be = await claude.polish(raw_be)
             polish_usage = claude.last_usage
 
-            # Build processed item with TG12B analysis + Sonnet polished text
-            from ..ai.schemas import NewsAnalysis
-
-            analysis = NewsAnalysis(
-                title_be=title_be,
-                summary_be=summary_be,
-                key_points_be=analysis_raw.get("key_points_be", []),
-                sentiment=analysis_raw.get("sentiment", "neutral"),
-                importance_level=analysis_raw.get("importance_level", 3),
-                tags_be=analysis_raw.get("tags_be", []),
-            )
+            # Step 4: Haiku analyzes (key points, tags, sentiment) — does NOT touch summary
+            analysis = await claude.analyze(title_be, summary_be)
             total_usage = {
                 "tg12b": ollama.last_usage,
                 "sonnet_polish": polish_usage,
+                "claude_analyze": claude.last_usage,
             }
 
             processed = self._build_processed_item(
@@ -165,7 +156,7 @@ class ContentProcessor:
             return False
 
     async def generate_keypoints(self, item_id: str) -> bool:
-        """Regenerate key points via TG12B for a translated item."""
+        """Generate 🔑 Галоўнае: key points via Claude for a translated item."""
         item = await db_manager.get_item(item_id)
         if item is None or not isinstance(item, ProcessedNewsItem):
             logger.warning(f"generate_keypoints: item {item_id} not found or not translated")
@@ -173,16 +164,12 @@ class ContentProcessor:
         try:
             title_be = item.translated_title or item.title
             summary_be = item.translated_summary or item.summary
-            ollama = self._get_ollama()
-            analysis_raw = await ollama.generate_analysis(title_be, summary_be)
+            backend = self._get_claude()
+            key_points = await backend.generate_key_points(title_be, summary_be)
             await db_manager.update_fields(
-                item_id,
-                key_points=analysis_raw.get("key_points_be", []),
-                tags=analysis_raw.get("tags_be", []),
-                sentiment=analysis_raw.get("sentiment", "neutral"),
-                importance_level=analysis_raw.get("importance_level", 3),
+                item_id, key_points=key_points, llm_usage=backend.last_usage
             )
-            logger.info(f"Key points regenerated for {title_be[:60]}...")
+            logger.info(f"Key points generated for {title_be[:60]}...")
             return True
         except Exception as e:
             logger.error(f"generate_keypoints failed: {e}", exc_info=True)

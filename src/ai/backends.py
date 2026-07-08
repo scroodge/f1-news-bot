@@ -15,10 +15,13 @@ import aiohttp
 
 from ..config import settings
 from .schemas import (
-    ANALYSIS_PROMPT_TG12B,
+    ANALYSIS_PROMPT,
+    KEY_POINTS_PROMPT,
     POLISH_PROMPT,
     SUMMARY_PROMPT,
     TRANSLATION_PROMPT,
+    KeyPointsAnalysis,
+    NewsAnalysis,
 )
 
 logger = logging.getLogger(__name__)
@@ -41,6 +44,10 @@ class LLMBackend(ABC):
     async def polish(self, raw_be: str) -> tuple[str, str]:
         """Polish raw BE translation. Returns (title_be, summary_be)."""
         raise NotImplementedError(f"{self.name} does not support polish()")
+
+    @abstractmethod
+    async def analyze(self, title_be: str, summary_be: str) -> NewsAnalysis:
+        """Analyze already-translated BE text. Raises on failure."""
 
     async def generate_key_points(self, title_be: str, summary_be: str) -> list[str]:
         raise NotImplementedError(f"{self.name} does not support key-points generation")
@@ -167,41 +174,6 @@ class OllamaBackend(LLMBackend):
             data = await response.json()
         return data.get("message", {}).get("content", "")
 
-    async def generate_analysis(self, title: str, content: str) -> dict:
-        """Analyze BE text via TG12B: key points, tags, sentiment, importance."""
-        session = await self._get_session()
-        truncated = content[:MAX_CONTENT_CHARS] if len(content) > MAX_CONTENT_CHARS else content
-        payload = {
-            "model": self.model,
-            "messages": [
-                {
-                    "role": "user",
-                    "content": ANALYSIS_PROMPT_TG12B.format(title=title, content=truncated),
-                }
-            ],
-            "stream": False,
-            "options": {"temperature": 0.3, "num_predict": 512},
-        }
-        async with session.post(f"{self.base_url}/api/chat", json=payload) as response:
-            response.raise_for_status()
-            data = await response.json()
-        raw = data.get("message", {}).get("content", "")
-        import json
-        import re
-
-        json_match = re.search(r"\{[^{}]*\}", raw, re.DOTALL)
-        if json_match:
-            try:
-                return json.loads(json_match.group())
-            except json.JSONDecodeError:
-                pass
-        return {
-            "key_points_be": [],
-            "tags_be": [],
-            "sentiment": "neutral",
-            "importance_level": 3,
-        }
-
     async def check_health(self) -> bool:
         try:
             session = await self._get_session()
@@ -262,6 +234,49 @@ class ClaudeBackend(LLMBackend):
             "completion_tokens": response.usage.output_tokens,
         }
         return title_be or "Без загалоўка", summary_be or "Без зместу"
+
+    async def analyze(self, title_be: str, summary_be: str) -> NewsAnalysis:
+        response = await self.client.messages.parse(
+            model=self.model,
+            max_tokens=2048,
+            messages=[
+                {
+                    "role": "user",
+                    "content": ANALYSIS_PROMPT.format(title_be=title_be, summary_be=summary_be),
+                }
+            ],
+            output_format=NewsAnalysis,
+        )
+        if response.parsed_output is None:
+            raise ValueError(f"Claude returned no parseable output (stop: {response.stop_reason})")
+        result = response.parsed_output
+        result.title_be = title_be
+        result.summary_be = summary_be
+        self.last_usage = {
+            "prompt_tokens": response.usage.input_tokens,
+            "completion_tokens": response.usage.output_tokens,
+        }
+        return result
+
+    async def generate_key_points(self, title_be: str, summary_be: str) -> list[str]:
+        response = await self.client.messages.parse(
+            model=self.model,
+            max_tokens=1024,
+            messages=[
+                {
+                    "role": "user",
+                    "content": KEY_POINTS_PROMPT.format(title_be=title_be, summary_be=summary_be),
+                }
+            ],
+            output_format=KeyPointsAnalysis,
+        )
+        if response.parsed_output is None:
+            raise ValueError(f"Claude key-points returned no output (stop: {response.stop_reason})")
+        self.last_usage = {
+            "prompt_tokens": response.usage.input_tokens,
+            "completion_tokens": response.usage.output_tokens,
+        }
+        return response.parsed_output.key_points_be
 
     async def check_health(self) -> bool:
         try:
