@@ -16,6 +16,7 @@ import aiohttp
 from ..config import settings
 from .schemas import (
     ANALYSIS_PROMPT,
+    EN_TRANSLATE_PROMPT,
     KEY_POINTS_PROMPT,
     LANG_LABELS,
     POLISH_PROMPT,
@@ -160,7 +161,7 @@ class OllamaBackend(LLMBackend):
         if title:
             prompt_text = TRANSLATION_PROMPT.format(source_lang=source_label, title=title, content=content)
         else:
-            prompt_text = f"Перакладзі на беларускую мову ({source_label}):\n\n{content}"
+            prompt_text = f"Перакладзі гэты тэкст на беларускую мову ({source_label}). Захавай поўную даўжыню, не скарачай:\n\n{content}"
         # Scale num_predict: ~2 tokens per char, with headroom
         num_predict = min(8192, max(2048, len(content) * 2))
         payload = {
@@ -226,26 +227,21 @@ class ClaudeBackend(LLMBackend):
         )
         text = response.content[0].text
         title_be = ""
-        summary_be = ""
-        for line in text.split("\n"):
+        lines = text.split("\n")
+        in_text = False
+        collected = []
+        for line in lines:
             if line.startswith("Загаловак:"):
                 title_be = line[len("Загаловак:") :].strip()
             elif line.startswith("Тэкст:"):
-                summary_be = line[len("Тэкст:") :].strip()
-        if not summary_be:
-            lines = text.split("\n")
-            in_text = False
-            collected = []
-            for line in lines:
-                if line.startswith("Тэкст:"):
-                    in_text = True
-                    rest = line[len("Тэкст:") :].strip()
-                    if rest:
-                        collected.append(rest)
-                    continue
-                if in_text:
-                    collected.append(line)
-            summary_be = "\n".join(collected).strip()
+                in_text = True
+                rest = line[len("Тэкст:") :].strip()
+                if rest:
+                    collected.append(rest)
+                continue
+            elif in_text:
+                collected.append(line)
+        summary_be = "\n".join(collected).strip()
         self.last_usage = {
             "prompt_tokens": response.usage.input_tokens,
             "completion_tokens": response.usage.output_tokens,
@@ -274,6 +270,40 @@ class ClaudeBackend(LLMBackend):
             "completion_tokens": response.usage.output_tokens,
         }
         return result
+
+    async def translate_en(self, title: str, content: str) -> tuple[str, str]:
+        """Translate English article directly to polished Belarusian via Sonnet."""
+        response = await self.client.messages.create(
+            model="claude-sonnet-4-6",
+            max_tokens=8192,
+            messages=[
+                {
+                    "role": "user",
+                    "content": EN_TRANSLATE_PROMPT.format(title=title, content=content),
+                }
+            ],
+        )
+        text = response.content[0].text
+        lines = text.split("\n")
+        title_be = ""
+        in_text = False
+        collected = []
+        for line in lines:
+            if line.startswith("Загаловак:"):
+                title_be = line[len("Загаловак:") :].strip()
+            elif line.startswith("Тэкст:"):
+                in_text = True
+                rest = line[len("Тэкст:") :].strip()
+                if rest:
+                    collected.append(rest)
+                continue
+            elif in_text:
+                collected.append(line)
+        self.last_usage = {
+            "prompt_tokens": response.usage.input_tokens,
+            "completion_tokens": response.usage.output_tokens,
+        }
+        return title_be or "Без загалоўка", "\n".join(collected).strip()
 
     async def generate_key_points(self, title_be: str, summary_be: str) -> list[str]:
         response = await self.client.messages.parse(
