@@ -16,6 +16,7 @@ import aiohttp
 from ..config import settings
 from .schemas import (
     ANALYSIS_PROMPT,
+    COMPRESS_PROMPT,
     EN_TRANSLATE_PROMPT,
     KEY_POINTS_PROMPT,
     LANG_LABELS,
@@ -247,6 +248,20 @@ class ClaudeBackend(LLMBackend):
             "completion_tokens": response.usage.output_tokens,
         }
         return title_be or "Без загалоўка", summary_be or "Без зместу"
+
+    async def compress(self, title: str, content: str, max_chars: int = 4000) -> str:
+        """Compress article text to ~max_chars using Sonnet, preserving key facts."""
+        response = await self.client.messages.create(
+            model="claude-sonnet-4-6",
+            max_tokens=8192,
+            messages=[
+                {
+                    "role": "user",
+                    "content": COMPRESS_PROMPT.format(title=title, content=content, max_chars=max_chars),
+                }
+            ],
+        )
+        return response.content[0].text
 
     async def analyze(self, title_be: str, summary_be: str) -> NewsAnalysis:
         response = await self.client.messages.parse(

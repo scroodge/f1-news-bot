@@ -117,6 +117,15 @@ class ContentProcessor:
         logger.info(f"Rejected duplicate ({score:.2f}): {news_item.title[:60]}...")
         return True
 
+    def _safe_summary(self, short: str, full: str, fallback: str, max_len: int = 400) -> str:
+        """Short summary for channel post. Falls back to first 3 sentences of full text."""
+        if short and len(short) <= max_len:
+            return short
+        text = full or fallback
+        sentences = text.split(". ")
+        result = ". ".join(sentences[:3])
+        return (result + ".") if not result.endswith(".") else result
+
     def _build_processed_item(
         self,
         news_item: NewsItem,
@@ -138,8 +147,7 @@ class ContentProcessor:
             image_url=news_item.image_url,
             video_url=news_item.video_url,
             media_type=news_item.media_type,
-            summary=short_summary or sonnet_summary or analysis.summary_be,
-            key_points=analysis.key_points_be,
+            summary=self._safe_summary(short_summary, sonnet_summary, analysis.summary_be),
             sentiment=analysis.sentiment,
             importance_level=analysis.importance_level,
             tags=analysis.tags_be,
@@ -167,12 +175,23 @@ class ContentProcessor:
 
             progress = self._progress.setdefault(item_id, TranslationProgress())
             source_lang = self._detect_language(f"{item.title} {item.content}")
+            ollama = self._get_ollama()
+            claude = self._get_claude()
+
+            # Step 0: Compress long originals (>3000 chars) via Sonnet to keep TG post under 4096
+            content = item.content
+            if len(content) > 3000:
+                progress.step = "compressing"
+                progress.detail = "Compressing with Sonnet..."
+                compressed = await claude.compress(item.title, content, 4000)
+                if compressed and len(compressed) < len(content):
+                    logger.info(f"Compressed {len(content)}→{len(compressed)} chars ({source_lang})")
+                    content = compressed
 
             # Step 1: TG12B translates RU/EN → BE (free)
             progress.step = "translating"
             progress.detail = "Translating with TG12B..."
-            ollama = self._get_ollama()
-            raw_be = await ollama.translate(item.title, item.content, source_lang=source_lang)
+            raw_be = await ollama.translate(item.title, content, source_lang=source_lang)
 
             # Step 2: TG12B short summary for channel preview (free)
             progress.step = "summary"
@@ -182,7 +201,6 @@ class ContentProcessor:
             # Step 3: Sonnet polish (fixes grammar, structures output, preserves full text)
             progress.step = "polishing"
             progress.detail = "Polishing with Sonnet..."
-            claude = self._get_claude()
             title_be, summary_be = await claude.polish(raw_be)
             polish_usage = claude.last_usage
 
