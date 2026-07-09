@@ -338,13 +338,20 @@ async function renderQueue() {
 async function renderPublished() {
   const el = document.getElementById("content");
   const data = await call("/published");
-  el.innerHTML = data.items.length
-    ? data.items.map(i => `
-      <div class="histitem">
-        <div class="t">${esc(i.title_be || i.title)}</div>
-        <div class="m">${i.published_to_channel_at ? new Date(i.published_to_channel_at).toLocaleString("be") : "—"} · ${esc(i.source)}</div>
-      </div>`).join("")
-    : `<div class="empty">Пакуль нічога не апублікавана</div>`;
+  if (!data.items.length) {
+    el.innerHTML = `<div class="empty">Пакуль нічога не апублікавана</div>`;
+    return;
+  }
+  el.innerHTML = data.items.map(i => `
+    <div class="card" style="opacity:.85">
+      <div class="preview"><div class="preview-collapsed" id="ph-${i.id}">${esc(i.preview)}</div><button class="expand-btn" data-act="expand-preview" data-target="ph-${i.id}" data-full="${esc(i.summary || i.preview)}">📖 Паказаць цалкам</button></div>
+      <div class="meta">
+        <span>📥 ${esc(i.source)}</span>
+        <span>⭐ ${i.importance_level}/5</span>
+        <span>🌐 ${esc(i.original_language || "?")}</span>
+        <span>✅ ${i.published_to_channel_at ? new Date(i.published_to_channel_at).toLocaleString("be") : ""}</span>
+      </div>
+    </div>`).join("");
 }
 
 async function renderStats() {

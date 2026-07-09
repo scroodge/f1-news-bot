@@ -256,7 +256,7 @@ async def generate_keypoints(item_id: str):
 @api.get("/published")
 async def get_published(limit: int = 20):
     items = await db_manager.get_by_status(NewsStatus.PUBLISHED, limit=limit)
-    return {"items": [_serialize(i, with_preview=False) for i in items]}
+    return {"items": [_serialize(i, with_preview=True) for i in items]}
 
 
 @api.get("/rejected")
