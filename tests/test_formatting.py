@@ -51,8 +51,10 @@ def test_channel_post_limits_key_points():
 
 
 def test_channel_post_truncates_long_summary():
-    post = format_channel_post(make_item(summary="х" * 500))
-    assert "х" * 500 in post  # full text, no truncation
+    long_text = "слова " * 100  # 600 chars with spaces
+    post = format_channel_post(make_item(summary=long_text))
+    assert "слова" in post
+    assert "..." in post  # truncated
 
 
 def test_details_show_both_titles():
