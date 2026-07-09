@@ -22,10 +22,13 @@ def format_channel_post(item: ProcessedNewsItem) -> str:
         for point in item.key_points[:3]:
             message += f"• {point}\n"
         message += "\n"
-    if item.summary:
+    if item.translated_summary:
+        body = item.translated_summary
+    elif item.summary:
         body = item.summary
-        if len(body) > 400:
-            body = body[:397].rsplit(" ", 1)[0] + "..."
+    else:
+        body = ""
+    if body:
         message += f"{body}\n\n"
     message += f"📰 Крыніца: {item.source}\n"
     message += f"🔗 Чытаць: {item.url}"

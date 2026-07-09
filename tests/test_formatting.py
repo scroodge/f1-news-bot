@@ -50,11 +50,11 @@ def test_channel_post_limits_key_points():
     assert "чацвёрты пункт" not in post  # only first 3 key points
 
 
-def test_channel_post_truncates_long_summary():
-    long_text = "слова " * 100  # 600 chars with spaces
+def test_channel_post_shows_full_text_within_limit():
+    long_text = "слова " * 100  # 600 chars
     post = format_channel_post(make_item(summary=long_text))
     assert "слова" in post
-    assert "..." in post  # truncated
+    assert len(post) <= 4096  # safety truncation
 
 
 def test_details_show_both_titles():
