@@ -32,6 +32,9 @@ def format_channel_post(item: ProcessedNewsItem) -> str:
     if item.tags:
         tags_str = " ".join([f"#{t.replace(' ', '_')}" for t in item.tags[:3]])
         message += f"\n\n{tags_str}"
+    # Telegram hard limit: 4096 chars
+    if len(message) > 4096:
+        message = message[:4093] + "..."
     return message
 
 
