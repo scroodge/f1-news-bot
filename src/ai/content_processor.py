@@ -150,7 +150,7 @@ class ContentProcessor:
         )
 
     async def translate_news(self, item_id: str, provider: str = "ollama") -> bool:
-        """Translate an article using TG12B or Sonnet → analyze pipeline."""
+        """Translate an article: TG12B → summary → Sonnet → analyze."""
         if not self._warmed_up:
             self._progress[item_id] = TranslationProgress(step="warmup", detail="Loading TG12B model...")
             await self._warmup()
@@ -167,52 +167,41 @@ class ContentProcessor:
 
             progress = self._progress.setdefault(item_id, TranslationProgress())
             source_lang = self._detect_language(f"{item.title} {item.content}")
+
+            # Step 1: TG12B translates RU/EN → BE (free)
+            progress.step = "translating"
+            progress.detail = "Translating with TG12B..."
             ollama = self._get_ollama()
+            raw_be = await ollama.translate(item.title, item.content, source_lang=source_lang)
+
+            # Step 2: TG12B short summary for channel preview (free)
+            progress.step = "summary"
+            progress.detail = "Generating short summary..."
+            short_summary = await ollama.generate_summary(raw_be)
+
+            # Step 3: Sonnet polish (fixes grammar, structures output, preserves full text)
+            progress.step = "polishing"
+            progress.detail = "Polishing with Sonnet..."
             claude = self._get_claude()
+            title_be, summary_be = await claude.polish(raw_be)
+            polish_usage = claude.last_usage
 
-            if source_lang == "en":
-                # EN → Sonnet translates directly (fast, paid)
-                progress.step = "translating"
-                progress.detail = "Translating with Sonnet..."
-                title_be, summary_be = await claude.translate_en(item.title, item.content)
-                translate_usage = claude.last_usage
-
-                # TG12B generates short summary from the Sonnet result (free)
-                progress.step = "summary"
-                progress.detail = "Generating short summary..."
-                short_summary = await ollama.generate_summary(summary_be)
-
-                total_usage = {"sonnet_translate": translate_usage, "tg12b_summary": ollama.last_usage}
-            else:
-                # RU → TG12B translates (free), Sonnet polishes
-                progress.step = "translating"
-                progress.detail = "Translating with TG12B..."
-                raw_be = await ollama.translate(item.title, item.content, source_lang=source_lang)
-                tg12b_usage = ollama.last_usage
-
-                progress.step = "summary"
-                progress.detail = "Generating short summary..."
-                short_summary = await ollama.generate_summary(raw_be)
-
-                progress.step = "polishing"
-                progress.detail = "Polishing with Sonnet..."
-                title_be, summary_be = await claude.polish(raw_be)
-                polish_usage = claude.last_usage
-
-                total_usage = {"tg12b": tg12b_usage, "sonnet_polish": polish_usage}
-
-            # Final step: Haiku analyzes
+            # Step 4: Haiku analyzes (key points, tags, sentiment)
             progress.step = "analyzing"
             progress.detail = "Analyzing with Haiku..."
             analysis = await claude.analyze(title_be, summary_be)
-            total_usage["claude_analyze"] = claude.last_usage
+            total_usage = {
+                "tg12b": ollama.last_usage,
+                "sonnet_polish": polish_usage,
+                "claude_analyze": claude.last_usage,
+            }
 
             processed = self._build_processed_item(
                 item, analysis, sonnet_summary=summary_be, short_summary=short_summary
             )
             await db_manager.mark_processed(item.id, processed, llm_usage=total_usage)
             await redis_service.signal_new_pending()
-            logger.info(f"Translated ({source_lang}→BE): {analysis.title_be[:60]}...")
+            logger.info(f"Translated (TG12B→Sonnet): {analysis.title_be[:60]}...")
 
             progress.step = "done"
             progress.detail = "Translation complete"
