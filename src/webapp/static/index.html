@@ -156,6 +156,10 @@
   .count-chip {
     font-size: 11px; color: var(--hint); font-weight: 500; margin-left: auto;
   }
+  :focus-visible {
+    outline: 2px solid var(--btn);
+    outline-offset: 2px;
+  }
   @media (prefers-color-scheme: dark) {
     .stat b { color: var(--fg); }
   }
@@ -174,7 +178,7 @@
   </div>
 </header>
 <main id="content"><div class="empty">Загрузка…</div></main>
-<div class="toast" id="toast"></div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
 
 <script>
 const tg = window.Telegram?.WebApp;
@@ -218,7 +222,7 @@ function rawCardHtml(item) {
   return `
   <div class="card" data-id="${item.id}">
     ${img}
-    <div class="preview"><div class="preview-collapsed" id="p-${item.id}">${esc(collapsed)}</div>${isLong ? '<button class="expand-btn" data-act="expand-preview" data-target="p-'+item.id+'" data-full="'+esc(full)+'">📖 Паказаць цалкам</button>' : ''}</div>
+    <div class="preview"><div class="preview-collapsed" id="p-${item.id}">${esc(collapsed)}</div>${isLong ? '<button class="expand-btn" data-act="expand-preview" data-target="p-'+item.id+'" data-full="'+esc(full)+'" aria-expanded="false">📖 Паказаць цалкам</button>' : ''}</div>
     <div class="meta">
       <span>📥 ${esc(item.source)}</span>
       <span>🎯 ${item.relevance_score.toFixed(2)}</span>
@@ -226,7 +230,7 @@ function rawCardHtml(item) {
     </div>
     <div class="row">
       <button class="action" data-act="translate">🌐 Перакласці</button>
-      <button class="action danger ghost" data-act="reject" style="flex:0 0 44px">✕</button>
+      <button class="action danger ghost" data-act="reject" aria-label="Адхіліць" style="flex:0 0 44px">✕</button>
     </div>
   </div>`;
 }
@@ -242,7 +246,7 @@ function processedCardHtml(item) {
   return `
   <div class="card" data-id="${item.id}">
     ${img}
-    <div class="preview"><div class="preview-collapsed" id="pp-${item.id}">${esc(item.preview)}</div><button class="expand-btn" data-act="expand-preview" data-target="pp-${item.id}" data-full="${esc(item.summary || item.preview)}">📖 Паказаць цалкам</button></div>
+    <div class="preview"><div class="preview-collapsed" id="pp-${item.id}">${esc(item.preview)}</div><button class="expand-btn" data-act="expand-preview" data-target="pp-${item.id}" data-full="${esc(item.summary || item.preview)}" aria-expanded="false">📖 Паказаць цалкам</button></div>
     <div class="meta">
       <span>📥 ${esc(item.source)}</span>
       <span>⭐ ${item.importance_level}/5</span>
@@ -250,7 +254,7 @@ function processedCardHtml(item) {
       <span>🌐 ${esc(item.original_language || "?")}</span>
       ${usageLine ? `<span>${usageLine}</span>` : ""}
     </div>
-    <button class="orig-toggle" data-act="toggle-original">📄 Арыгінал</button>
+    <button class="orig-toggle" data-act="toggle-original" aria-expanded="false">📄 Арыгінал</button>
     <div class="orig-content" id="orig-${item.id}">
       <div><div class="orig-inner"><b>${esc(item.title)}</b>\n\n${esc(item.original_content || "")}</div></div>
     </div>
@@ -271,8 +275,8 @@ function processedCardHtml(item) {
     </div>
     <div class="row">
       <button class="action" data-act="approve">✅ Публікаваць</button>
-      <button class="action ghost" data-act="edit">✏️</button>
-      <button class="action danger ghost" data-act="reject" style="flex:0 0 44px">✕</button>
+      <button class="action ghost" data-act="edit" aria-label="Рэдагаваць">✏️</button>
+      <button class="action danger ghost" data-act="reject" aria-label="Адхіліць" style="flex:0 0 44px">✕</button>
     </div>
     <button class="action ghost" data-act="translate" style="font-size:12px">🌐 Пераперакласці</button>
   </div>`;
@@ -344,7 +348,7 @@ async function renderPublished() {
   }
   el.innerHTML = data.items.map(i => `
     <div class="card" style="opacity:.85">
-      <div class="preview"><div class="preview-collapsed" id="ph-${i.id}">${esc(i.preview)}</div><button class="expand-btn" data-act="expand-preview" data-target="ph-${i.id}" data-full="${esc(i.summary || i.preview)}">📖 Паказаць цалкам</button></div>
+      <div class="preview"><div class="preview-collapsed" id="ph-${i.id}">${esc(i.preview)}</div><button class="expand-btn" data-act="expand-preview" data-target="ph-${i.id}" data-full="${esc(i.summary || i.preview)}" aria-expanded="false">📖 Паказаць цалкам</button></div>
       <div class="meta">
         <span>📥 ${esc(i.source)}</span>
         <span>⭐ ${i.importance_level}/5</span>
@@ -546,7 +550,10 @@ document.getElementById("content").addEventListener("click", async (e) => {
   try {
     if (button.dataset.act === "toggle-original") {
       const content = button.nextElementSibling;
-      if (content) content.classList.toggle("open");
+      if (content) {
+        const isOpen = content.classList.toggle("open");
+        button.setAttribute("aria-expanded", isOpen ? "true" : "false");
+      }
       return;
     }
     if (button.dataset.act === "expand-preview") {
@@ -558,9 +565,11 @@ document.getElementById("content").addEventListener("click", async (e) => {
           }
           target.classList.remove("preview-collapsed");
           button.textContent = "📖 Схаваць";
+          button.setAttribute("aria-expanded", "true");
         } else {
           target.classList.add("preview-collapsed");
           button.textContent = "📖 Паказаць цалкам";
+          button.setAttribute("aria-expanded", "false");
         }
       }
       return;
