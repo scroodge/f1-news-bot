@@ -115,9 +115,13 @@ class OllamaBackend(LLMBackend):
             return raw
 
         chunks = self._split_content(content, MAX_CONTENT_CHARS)
-        logger.info(f"TG12B: translating {len(chunks)} chunk{'s' if len(chunks) != 1 else ''} ({len(content)} chars, {source_lang})")
+        logger.info(
+            f"TG12B: translating {len(chunks)} chunk{'s' if len(chunks) != 1 else ''} ({len(content)} chars, {source_lang})"
+        )
 
-        title_be = await self._translate_chunk(session, "", f"Загаловак: {title}", total_tokens, source_label)
+        title_be = await self._translate_chunk(
+            session, "", f"Загаловак: {title}", total_tokens, source_label
+        )
         title_be = title_be.replace("Загаловак:", "").strip()
 
         chunk_results = []
@@ -156,11 +160,18 @@ class OllamaBackend(LLMBackend):
         return chunks
 
     async def _translate_chunk(
-        self, session: aiohttp.ClientSession, title: str, content: str, usage: dict, source_label: str = "з рускай (ru)"
+        self,
+        session: aiohttp.ClientSession,
+        title: str,
+        content: str,
+        usage: dict,
+        source_label: str = "з рускай (ru)",
     ) -> str:
         """Translate a single chunk via Ollama API."""
         if title:
-            prompt_text = TRANSLATION_PROMPT.format(source_lang=source_label, title=title, content=content)
+            prompt_text = TRANSLATION_PROMPT.format(
+                source_lang=source_label, title=title, content=content
+            )
         else:
             prompt_text = f"Перакладзі гэты тэкст на беларускую мову ({source_label}). Захавай поўную даўжыню, не скарачай:\n\n{content}"
         # Scale num_predict: ~2 tokens per char, with headroom
@@ -257,7 +268,9 @@ class ClaudeBackend(LLMBackend):
             messages=[
                 {
                     "role": "user",
-                    "content": COMPRESS_PROMPT.format(title=title, content=content, max_chars=max_chars),
+                    "content": COMPRESS_PROMPT.format(
+                        title=title, content=content, max_chars=max_chars
+                    ),
                 }
             ],
         )
