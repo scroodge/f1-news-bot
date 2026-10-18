@@ -25,7 +25,9 @@ def test_js_syntax():
     try:
         result = subprocess.run(
             ["node", "--check", tmp],
-            capture_output=True, text=True, timeout=10,
+            capture_output=True,
+            text=True,
+            timeout=10,
         )
         assert result.returncode == 0, f"JS syntax error:\n{result.stderr}"
     finally:
