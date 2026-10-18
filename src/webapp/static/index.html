@@ -84,6 +84,7 @@
   }
   button.action:active { transform: scale(.96); }
   button.action:disabled { opacity: .4; transform: none; }
+  button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 2px solid var(--btn); outline-offset: 2px; }
   button.ghost { background: var(--bg); color: var(--fg); border: 1px solid color-mix(in srgb, var(--fg) 15%, transparent); font-weight: 500; }
   button.ghost:active { background: color-mix(in srgb, var(--fg) 6%, transparent); }
   button.danger { background: #e74c3c; color: #fff; }
@@ -226,7 +227,7 @@ function rawCardHtml(item) {
     </div>
     <div class="row">
       <button class="action" data-act="translate">🌐 Перакласці</button>
-      <button class="action danger ghost" data-act="reject" style="flex:0 0 44px">✕</button>
+      <button class="action danger ghost" data-act="reject" aria-label="Адхіліць" style="flex:0 0 44px">✕</button>
     </div>
   </div>`;
 }
@@ -255,14 +256,14 @@ function processedCardHtml(item) {
       <div><div class="orig-inner"><b>${esc(item.title)}</b>\n\n${esc(item.original_content || "")}</div></div>
     </div>
     <div class="editor" id="edit-${item.id}">
-      <label>Загаловак</label>
-      <input name="title_be" value="${esc(item.title_be || "")}">
-      <label>Тэкст</label>
-      <textarea name="summary">${esc(item.summary || "")}</textarea>
-      <label>Галоўнае (радок на пункт)</label>
-      <textarea name="key_points" rows="3">${esc((item.key_points || []).join("\n"))}</textarea>
-      <label>Тэгі (праз коску)</label>
-      <input name="tags" value="${esc((item.tags || []).join(", "))}">
+      <label for="title_be-${item.id}">Загаловак</label>
+      <input id="title_be-${item.id}" name="title_be" value="${esc(item.title_be || "")}">
+      <label for="summary-${item.id}">Тэкст</label>
+      <textarea id="summary-${item.id}" name="summary">${esc(item.summary || "")}</textarea>
+      <label for="key_points-${item.id}">Галоўнае (радок на пункт)</label>
+      <textarea id="key_points-${item.id}" name="key_points" rows="3">${esc((item.key_points || []).join("\n"))}</textarea>
+      <label for="tags-${item.id}">Тэгі (праз коску)</label>
+      <input id="tags-${item.id}" name="tags" value="${esc((item.tags || []).join(", "))}">
       <div class="row">
         <button class="action" data-act="save">Захаваць</button>
         <button class="action ghost" data-act="generate-keypoints">🔑 Галоўнае</button>
@@ -271,8 +272,8 @@ function processedCardHtml(item) {
     </div>
     <div class="row">
       <button class="action" data-act="approve">✅ Публікаваць</button>
-      <button class="action ghost" data-act="edit">✏️</button>
-      <button class="action danger ghost" data-act="reject" style="flex:0 0 44px">✕</button>
+      <button class="action ghost" data-act="edit" aria-label="Рэдагаваць">✏️</button>
+      <button class="action danger ghost" data-act="reject" aria-label="Адхіліць" style="flex:0 0 44px">✕</button>
     </div>
     <button class="action ghost" data-act="translate" style="font-size:12px">🌐 Пераперакласці</button>
   </div>`;
