@@ -40,16 +40,16 @@ async def _notify_admin(title_be: str, item_id: str):
     if not settings.telegram_bot_token or not settings.telegram_admin_id:
         return
     mini_app_url = settings.miniapp_url or "https://f1.mykid.life/admin"
-    text = (
-        f"🌐 Пераклад гатовы!\n\n"
-        f"🏎️ {title_be[:200]}\n\n"
-        f"→ {mini_app_url}"
-    )
+    text = f"🌐 Пераклад гатовы!\n\n🏎️ {title_be[:200]}\n\n→ {mini_app_url}"
     try:
         async with aiohttp.ClientSession() as session:
             await session.post(
                 f"https://api.telegram.org/bot{settings.telegram_bot_token}/sendMessage",
-                json={"chat_id": settings.telegram_admin_id, "text": text, "disable_web_page_preview": True},
+                json={
+                    "chat_id": settings.telegram_admin_id,
+                    "text": text,
+                    "disable_web_page_preview": True,
+                },
             )
     except Exception as e:
         logger.warning(f"Failed to send admin notification: {e}")
@@ -160,7 +160,9 @@ class ContentProcessor:
     async def translate_news(self, item_id: str, provider: str = "ollama") -> bool:
         """Translate an article: TG12B → summary → Sonnet → analyze."""
         if not self._warmed_up:
-            self._progress[item_id] = TranslationProgress(step="warmup", detail="Loading TG12B model...")
+            self._progress[item_id] = TranslationProgress(
+                step="warmup", detail="Loading TG12B model..."
+            )
             await self._warmup()
         item = await db_manager.get_item(item_id)
         if item is None:
@@ -185,7 +187,9 @@ class ContentProcessor:
                 progress.detail = "Compressing with Sonnet..."
                 compressed = await claude.compress(item.title, content, 4000)
                 if compressed and len(compressed) < len(content):
-                    logger.info(f"Compressed {len(content)}→{len(compressed)} chars ({source_lang})")
+                    logger.info(
+                        f"Compressed {len(content)}→{len(compressed)} chars ({source_lang})"
+                    )
                     content = compressed
 
             # Step 1: TG12B translates RU/EN → BE (free)

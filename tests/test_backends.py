@@ -1,7 +1,8 @@
 """Test LLM backends can be instantiated — catch abstract method errors."""
 
 import pytest
-from src.ai.backends import LLMBackend, OllamaBackend, ClaudeBackend, EmbeddingClient
+
+from src.ai.backends import ClaudeBackend, EmbeddingClient, LLMBackend, OllamaBackend
 
 
 def test_ollama_backend_can_instantiate():
