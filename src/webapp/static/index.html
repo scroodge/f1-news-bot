@@ -226,7 +226,7 @@ function rawCardHtml(item) {
     </div>
     <div class="row">
       <button class="action" data-act="translate">🌐 Перакласці</button>
-      <button class="action danger ghost" data-act="reject" style="flex:0 0 44px">✕</button>
+      <button class="action danger ghost" data-act="reject" style="flex:0 0 44px" aria-label="Адхіліць" title="Адхіліць">✕</button>
     </div>
   </div>`;
 }
@@ -250,7 +250,7 @@ function processedCardHtml(item) {
       <span>🌐 ${esc(item.original_language || "?")}</span>
       ${usageLine ? `<span>${usageLine}</span>` : ""}
     </div>
-    <button class="orig-toggle" data-act="toggle-original">📄 Арыгінал</button>
+    <button class="orig-toggle" data-act="toggle-original" aria-expanded="false">📄 Арыгінал</button>
     <div class="orig-content" id="orig-${item.id}">
       <div><div class="orig-inner"><b>${esc(item.title)}</b>\n\n${esc(item.original_content || "")}</div></div>
     </div>
@@ -271,8 +271,8 @@ function processedCardHtml(item) {
     </div>
     <div class="row">
       <button class="action" data-act="approve">✅ Публікаваць</button>
-      <button class="action ghost" data-act="edit">✏️</button>
-      <button class="action danger ghost" data-act="reject" style="flex:0 0 44px">✕</button>
+      <button class="action ghost" data-act="edit" aria-label="Рэдагаваць" title="Рэдагаваць">✏️</button>
+      <button class="action danger ghost" data-act="reject" style="flex:0 0 44px" aria-label="Адхіліць" title="Адхіліць">✕</button>
     </div>
     <button class="action ghost" data-act="translate" style="font-size:12px">🌐 Пераперакласці</button>
   </div>`;
@@ -546,7 +546,10 @@ document.getElementById("content").addEventListener("click", async (e) => {
   try {
     if (button.dataset.act === "toggle-original") {
       const content = button.nextElementSibling;
-      if (content) content.classList.toggle("open");
+      if (content) {
+        const isOpen = content.classList.toggle("open");
+        button.setAttribute("aria-expanded", isOpen ? "true" : "false");
+      }
       return;
     }
     if (button.dataset.act === "expand-preview") {
