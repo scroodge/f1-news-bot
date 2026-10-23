@@ -108,7 +108,11 @@ def format_status(
     message = "📊 Статус системы\n\n"
     message += f"Всего собрано: {stats.total_collected}\n"
     for status, count in sorted(stats.by_status.items()):
-        label = STATUS_LABELS.get(NewsStatus(status), status)
+        try:
+            enum_status = NewsStatus(status)
+            label = STATUS_LABELS.get(enum_status, status)
+        except ValueError:
+            label = status
         message += f"  {label}: {count}\n"
     message += f"\n⏳ Ждут модерации: {pending}\n"
     message += f"📤 В очереди на публикацию: {queued}\n"
