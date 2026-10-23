@@ -141,3 +141,21 @@ async def test_rate_limit_counter(db):
     await db.approve(item_id)
     await db.mark_published(item_id)
     assert await db.published_in_last_hour() == 1
+
+
+async def test_get_all(db):
+    await db.save_news_item(make_item(url="https://example.com/news/1"))
+    id2 = await db.save_news_item(make_item(url="https://example.com/news/2"))
+    await db.mark_processed(id2, make_processed(id2))
+
+    all_items = await db.get_all()
+    assert len(all_items) == 2
+    statuses = {item.status for item in all_items}
+    assert statuses == {NewsStatus.COLLECTED, NewsStatus.PROCESSED}
+
+    # Test pagination
+    page1 = await db.get_all(limit=1, offset=0)
+    page2 = await db.get_all(limit=1, offset=1)
+    assert len(page1) == 1
+    assert len(page2) == 1
+    assert page1[0].id != page2[0].id
