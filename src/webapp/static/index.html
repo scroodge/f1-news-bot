@@ -250,7 +250,7 @@ function processedCardHtml(item) {
       <span>🌐 ${esc(item.original_language || "?")}</span>
       ${usageLine ? `<span>${usageLine}</span>` : ""}
     </div>
-    <button class="orig-toggle" data-act="toggle-original">📄 Арыгінал</button>
+    <button class="orig-toggle" data-act="toggle-original" aria-expanded="false" aria-controls="orig-${item.id}">📄 Арыгінал</button>
     <div class="orig-content" id="orig-${item.id}">
       <div><div class="orig-inner"><b>${esc(item.title)}</b>\n\n${esc(item.original_content || "")}</div></div>
     </div>
@@ -546,7 +546,10 @@ document.getElementById("content").addEventListener("click", async (e) => {
   try {
     if (button.dataset.act === "toggle-original") {
       const content = button.nextElementSibling;
-      if (content) content.classList.toggle("open");
+      if (content) {
+        const isOpen = content.classList.toggle("open");
+        button.setAttribute("aria-expanded", isOpen ? "true" : "false");
+      }
       return;
     }
     if (button.dataset.act === "expand-preview") {

@@ -60,3 +60,10 @@ def test_icon_buttons_have_aria_labels():
     html = INDEX_HTML.read_text(encoding="utf-8")
     assert 'aria-label="Адхіліць"' in html
     assert 'aria-label="Рэдагаваць"' in html
+
+
+def test_collapsible_controls_have_aria_attributes():
+    html = INDEX_HTML.read_text(encoding="utf-8")
+    assert 'aria-expanded="false"' in html
+    assert 'aria-controls="orig-${item.id}"' in html
+    assert 'button.setAttribute("aria-expanded", isOpen ? "true" : "false")' in html
