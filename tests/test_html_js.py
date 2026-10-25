@@ -60,3 +60,13 @@ def test_icon_buttons_have_aria_labels():
     html = INDEX_HTML.read_text(encoding="utf-8")
     assert 'aria-label="Адхіліць"' in html
     assert 'aria-label="Рэдагаваць"' in html
+
+
+def test_accessibility_attributes_present():
+    html = INDEX_HTML.read_text(encoding="utf-8")
+    assert 'role="tablist"' in html
+    assert 'role="tab"' in html
+    assert "aria-selected=" in html
+    assert "aria-expanded=" in html
+    assert "aria-controls=" in html
+    assert ":focus-visible" in html
