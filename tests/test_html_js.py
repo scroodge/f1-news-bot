@@ -25,7 +25,9 @@ def test_js_syntax():
     try:
         result = subprocess.run(
             ["node", "--check", tmp],
-            capture_output=True, text=True, timeout=10,
+            capture_output=True,
+            text=True,
+            timeout=10,
         )
         assert result.returncode == 0, f"JS syntax error:\n{result.stderr}"
     finally:
@@ -52,3 +54,28 @@ def test_js_async_handlers():
 def test_html_has_translate_button():
     html = INDEX_HTML.read_text(encoding="utf-8")
     assert "Перакласці" in html or "translate" in html
+
+
+def test_icon_buttons_have_aria_labels():
+    html = INDEX_HTML.read_text(encoding="utf-8")
+    assert 'aria-label="Адхіліць"' in html
+    assert 'aria-label="Рэдагаваць"' in html
+
+
+def test_html_accessibility_attributes():
+    html = INDEX_HTML.read_text(encoding="utf-8")
+    # Verify tablist roles and aria-selected
+    assert 'role="tablist"' in html
+    assert 'role="tab"' in html
+    assert "aria-selected=" in html
+
+    # Verify editor form inputs have corresponding labels via for/id
+    assert 'for="edit-title-${item.id}"' in html
+    assert 'id="edit-title-${item.id}"' in html
+
+    # Verify collapsible buttons have aria-expanded and aria-controls
+    assert 'aria-expanded="false"' in html
+    assert "aria-controls=" in html
+
+    # Verify focus-visible style rule
+    assert ":focus-visible" in html

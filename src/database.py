@@ -345,6 +345,17 @@ class DatabaseManager:
                 return None
             return _to_model(item) if item else None
 
+    async def get_all(self, limit: int = 20, offset: int = 0) -> list[ProcessedNewsItem | NewsItem]:
+        """All items across all statuses, ordered by creation date descending."""
+        async with self.session() as s:
+            result = await s.execute(
+                select(NewsItemDB)
+                .order_by(NewsItemDB.created_at.desc())
+                .offset(offset)
+                .limit(limit)
+            )
+            return [_to_model(i) for i in result.scalars().all()]
+
     async def get_by_status(
         self, status: NewsStatus, limit: int = 20, offset: int = 0
     ) -> list[ProcessedNewsItem | NewsItem]:
