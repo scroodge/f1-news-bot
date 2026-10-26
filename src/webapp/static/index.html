@@ -175,10 +175,10 @@
     <h1>F1 News</h1>
     <span class="head-badge">мадэрацыя</span>
   </div>
-  <div class="tabs" role="tablist">
-    <button class="tab active" data-tab="queue" role="tab" aria-selected="true">Чарга <span id="queue-count"></span></button>
-    <button class="tab" data-tab="published" role="tab" aria-selected="false">Гісторыя</button>
-    <button class="tab" data-tab="stats" role="tab" aria-selected="false">Статыстыка</button>
+  <div class="tabs" role="tablist" aria-label="Раздзелы">
+    <button class="tab active" role="tab" aria-selected="true" data-tab="queue">Чарга <span id="queue-count"></span></button>
+    <button class="tab" role="tab" aria-selected="false" data-tab="published">Гісторыя</button>
+    <button class="tab" role="tab" aria-selected="false" data-tab="stats">Статыстыка</button>
   </div>
 </header>
 <main id="content"><div class="empty">Загрузка…</div></main>
@@ -226,7 +226,7 @@ function rawCardHtml(item) {
   return `
   <div class="card" data-id="${item.id}">
     ${img}
-    <div class="preview"><div class="preview-collapsed" id="p-${item.id}">${esc(collapsed)}</div>${isLong ? '<button class="expand-btn" data-act="expand-preview" data-target="p-'+item.id+'" data-full="'+esc(full)+'" aria-expanded="false">📖 Паказаць цалкам</button>' : ''}</div>
+    <div class="preview"><div class="preview-collapsed" id="p-${item.id}">${esc(collapsed)}</div>${isLong ? '<button class="expand-btn" data-act="expand-preview" data-target="p-'+item.id+'" data-full="'+esc(full)+'" aria-expanded="false" aria-controls="p-'+item.id+'">📖 Паказаць цалкам</button>' : ''}</div>
     <div class="meta">
       <span>📥 ${esc(item.source)}</span>
       <span>🎯 ${item.relevance_score.toFixed(2)}</span>
@@ -234,7 +234,7 @@ function rawCardHtml(item) {
     </div>
     <div class="row">
       <button class="action" data-act="translate">🌐 Перакласці</button>
-      <button class="action danger ghost" data-act="reject" aria-label="Адхіліць" title="Адхіліць" style="flex:0 0 44px">✕</button>
+      <button class="action danger ghost" data-act="reject" aria-label="Адхіліць" style="flex:0 0 44px">✕</button>
     </div>
   </div>`;
 }
@@ -250,7 +250,7 @@ function processedCardHtml(item) {
   return `
   <div class="card" data-id="${item.id}">
     ${img}
-    <div class="preview"><div class="preview-collapsed" id="pp-${item.id}">${esc(item.preview)}</div><button class="expand-btn" data-act="expand-preview" data-target="pp-${item.id}" data-full="${esc(item.summary || item.preview)}" aria-expanded="false">📖 Паказаць цалкам</button></div>
+    <div class="preview"><div class="preview-collapsed" id="pp-${item.id}">${esc(item.preview)}</div><button class="expand-btn" data-act="expand-preview" data-target="pp-${item.id}" data-full="${esc(item.summary || item.preview)}" aria-expanded="false" aria-controls="pp-${item.id}">📖 Паказаць цалкам</button></div>
     <div class="meta">
       <span>📥 ${esc(item.source)}</span>
       <span>⭐ ${item.importance_level}/5</span>
@@ -258,7 +258,7 @@ function processedCardHtml(item) {
       <span>🌐 ${esc(item.original_language || "?")}</span>
       ${usageLine ? `<span>${usageLine}</span>` : ""}
     </div>
-    <button class="orig-toggle" data-act="toggle-original" aria-expanded="false">📄 Арыгінал</button>
+    <button class="orig-toggle" data-act="toggle-original" aria-expanded="false" aria-controls="orig-${item.id}">📄 Арыгінал</button>
     <div class="orig-content" id="orig-${item.id}">
       <div><div class="orig-inner"><b>${esc(item.title)}</b>\n\n${esc(item.original_content || "")}</div></div>
     </div>
@@ -279,8 +279,8 @@ function processedCardHtml(item) {
     </div>
     <div class="row">
       <button class="action" data-act="approve">✅ Публікаваць</button>
-      <button class="action ghost" data-act="edit" aria-label="Рэдагаваць" title="Рэдагаваць">✏️</button>
-      <button class="action danger ghost" data-act="reject" aria-label="Адхіліць" title="Адхіліць" style="flex:0 0 44px">✕</button>
+      <button class="action ghost" data-act="edit" aria-label="Рэдагаваць">✏️</button>
+      <button class="action danger ghost" data-act="reject" aria-label="Адхіліць" style="flex:0 0 44px">✕</button>
     </div>
     <button class="action ghost" data-act="translate" style="font-size:12px">🌐 Пераперакласці</button>
   </div>`;
@@ -293,9 +293,9 @@ let processedQueueData = null;
 
 function renderSubTabs() {
   return `
-    <div class="sub-tabs" role="tablist">
-      <button class="sub-tab ${queueSubTab === "raw" ? "active" : ""}" data-subtab="raw" role="tab" aria-selected="${queueSubTab === "raw"}">Новыя${rawQueueData ? ` (${rawQueueData.total})` : ""}</button>
-      <button class="sub-tab ${queueSubTab === "processed" ? "active" : ""}" data-subtab="processed" role="tab" aria-selected="${queueSubTab === "processed"}">На модэрацыі${processedQueueData ? ` (${processedQueueData.total})` : ""}</button>
+    <div class="sub-tabs" role="tablist" aria-label="Падпадзелы">
+      <button class="sub-tab ${queueSubTab === "raw" ? "active" : ""}" role="tab" aria-selected="${queueSubTab === "raw"}" data-subtab="raw">Новыя${rawQueueData ? ` (${rawQueueData.total})` : ""}</button>
+      <button class="sub-tab ${queueSubTab === "processed" ? "active" : ""}" role="tab" aria-selected="${queueSubTab === "processed"}" data-subtab="processed">На модэрацыі${processedQueueData ? ` (${processedQueueData.total})` : ""}</button>
     </div>`;
 }
 
@@ -352,7 +352,7 @@ async function renderPublished() {
   }
   el.innerHTML = data.items.map(i => `
     <div class="card" style="opacity:.85">
-      <div class="preview"><div class="preview-collapsed" id="ph-${i.id}">${esc(i.preview)}</div><button class="expand-btn" data-act="expand-preview" data-target="ph-${i.id}" data-full="${esc(i.summary || i.preview)}" aria-expanded="false">📖 Паказаць цалкам</button></div>
+      <div class="preview"><div class="preview-collapsed" id="ph-${i.id}">${esc(i.preview)}</div><button class="expand-btn" data-act="expand-preview" data-target="ph-${i.id}" data-full="${esc(i.summary || i.preview)}" aria-expanded="false" aria-controls="ph-${i.id}">📖 Паказаць цалкам</button></div>
       <div class="meta">
         <span>📥 ${esc(i.source)}</span>
         <span>⭐ ${i.importance_level}/5</span>

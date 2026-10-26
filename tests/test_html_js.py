@@ -60,6 +60,9 @@ def test_html_accessibility_attributes():
     html = INDEX_HTML.read_text(encoding="utf-8")
     assert 'aria-label="Адхіліць"' in html
     assert 'aria-label="Рэдагаваць"' in html
-    assert 'aria-live="polite"' in html
     assert 'role="tablist"' in html
+    assert 'role="tab"' in html
+    assert "aria-selected=" in html
+    assert "aria-expanded=" in html
+    assert "aria-controls=" in html
     assert ":focus-visible" in html
