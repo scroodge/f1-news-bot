@@ -18,10 +18,6 @@
     --radius-sm: 10px;
   }
   * { box-sizing: border-box; margin: 0; }
-  :focus-visible {
-    outline: 2px solid var(--btn);
-    outline-offset: 2px;
-  }
   body {
     background: var(--bg); color: var(--fg);
     font: -apple-system, system-ui, Roboto, sans-serif;
@@ -88,7 +84,10 @@
   }
   button.action:active { transform: scale(.96); }
   button.action:disabled { opacity: .4; transform: none; }
-  button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 2px solid var(--btn); outline-offset: 2px; }
+  button:focus-visible, input:focus-visible, textarea:focus-visible, .tab:focus-visible, .sub-tab:focus-visible {
+    outline: 2px solid var(--btn);
+    outline-offset: 2px;
+  }
   button.ghost { background: var(--bg); color: var(--fg); border: 1px solid color-mix(in srgb, var(--fg) 15%, transparent); font-weight: 500; }
   button.ghost:active { background: color-mix(in srgb, var(--fg) 6%, transparent); }
   button.danger { background: #e74c3c; color: #fff; }
@@ -161,6 +160,10 @@
   .count-chip {
     font-size: 11px; color: var(--hint); font-weight: 500; margin-left: auto;
   }
+  :focus-visible {
+    outline: 2px solid var(--btn);
+    outline-offset: 2px;
+  }
   @media (prefers-color-scheme: dark) {
     .stat b { color: var(--fg); }
   }
@@ -172,14 +175,14 @@
     <h1>F1 News</h1>
     <span class="head-badge">мадэрацыя</span>
   </div>
-  <div class="tabs" role="tablist">
-    <button class="tab active" data-tab="queue" role="tab" aria-selected="true">Чарга <span id="queue-count"></span></button>
-    <button class="tab" data-tab="published" role="tab" aria-selected="false">Гісторыя</button>
-    <button class="tab" data-tab="stats" role="tab" aria-selected="false">Статыстыка</button>
+  <div class="tabs">
+    <button class="tab active" data-tab="queue">Чарга <span id="queue-count"></span></button>
+    <button class="tab" data-tab="published">Гісторыя</button>
+    <button class="tab" data-tab="stats">Статыстыка</button>
   </div>
 </header>
 <main id="content"><div class="empty">Загрузка…</div></main>
-<div class="toast" id="toast"></div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
 
 <script>
 const tg = window.Telegram?.WebApp;
@@ -231,7 +234,7 @@ function rawCardHtml(item) {
     </div>
     <div class="row">
       <button class="action" data-act="translate">🌐 Перакласці</button>
-      <button class="action danger ghost" data-act="reject" aria-label="Адхіліць" style="flex:0 0 44px">✕</button>
+      <button class="action danger ghost" data-act="reject" style="flex:0 0 44px" aria-label="Адхіліць">✕</button>
     </div>
   </div>`;
 }
@@ -260,24 +263,24 @@ function processedCardHtml(item) {
       <div><div class="orig-inner"><b>${esc(item.title)}</b>\n\n${esc(item.original_content || "")}</div></div>
     </div>
     <div class="editor" id="edit-${item.id}">
-      <label for="title_be-${item.id}">Загаловак</label>
-      <input id="title_be-${item.id}" name="title_be" value="${esc(item.title_be || "")}">
-      <label for="summary-${item.id}">Тэкст</label>
-      <textarea id="summary-${item.id}" name="summary">${esc(item.summary || "")}</textarea>
-      <label for="key_points-${item.id}">Галоўнае (радок на пункт)</label>
-      <textarea id="key_points-${item.id}" name="key_points" rows="3">${esc((item.key_points || []).join("\n"))}</textarea>
-      <label for="tags-${item.id}">Тэгі (праз коску)</label>
-      <input id="tags-${item.id}" name="tags" value="${esc((item.tags || []).join(", "))}">
+      <label for="edit-title-${item.id}">Загаловак</label>
+      <input id="edit-title-${item.id}" name="title_be" value="${esc(item.title_be || "")}">
+      <label for="edit-summary-${item.id}">Тэкст</label>
+      <textarea id="edit-summary-${item.id}" name="summary">${esc(item.summary || "")}</textarea>
+      <label for="edit-kp-${item.id}">Галоўнае (радок на пункт)</label>
+      <textarea id="edit-kp-${item.id}" name="key_points" rows="3">${esc((item.key_points || []).join("\n"))}</textarea>
+      <label for="edit-tags-${item.id}">Тэгі (праз коску)</label>
+      <input id="edit-tags-${item.id}" name="tags" value="${esc((item.tags || []).join(", "))}">
       <div class="row">
         <button class="action" data-act="save">Захаваць</button>
         <button class="action ghost" data-act="generate-keypoints">🔑 Галоўнае</button>
-        <button class="action ghost" data-act="cancel" aria-label="Скасаваць" style="flex:0 0 60px">Скасаваць</button>
+        <button class="action ghost" data-act="cancel" style="flex:0 0 60px">Скасаваць</button>
       </div>
     </div>
     <div class="row">
       <button class="action" data-act="approve">✅ Публікаваць</button>
       <button class="action ghost" data-act="edit" aria-label="Рэдагаваць">✏️</button>
-      <button class="action danger ghost" data-act="reject" aria-label="Адхіліць" style="flex:0 0 44px">✕</button>
+      <button class="action danger ghost" data-act="reject" style="flex:0 0 44px" aria-label="Адхіліць">✕</button>
     </div>
     <button class="action ghost" data-act="translate" style="font-size:12px">🌐 Пераперакласці</button>
   </div>`;
@@ -290,9 +293,9 @@ let processedQueueData = null;
 
 function renderSubTabs() {
   return `
-    <div class="sub-tabs" role="tablist">
-      <button class="sub-tab ${queueSubTab === "raw" ? "active" : ""}" data-subtab="raw" role="tab" aria-selected="${queueSubTab === "raw"}">Новыя${rawQueueData ? ` (${rawQueueData.total})` : ""}</button>
-      <button class="sub-tab ${queueSubTab === "processed" ? "active" : ""}" data-subtab="processed" role="tab" aria-selected="${queueSubTab === "processed"}">На модэрацыі${processedQueueData ? ` (${processedQueueData.total})` : ""}</button>
+    <div class="sub-tabs">
+      <button class="sub-tab ${queueSubTab === "raw" ? "active" : ""}" data-subtab="raw">Новыя${rawQueueData ? ` (${rawQueueData.total})` : ""}</button>
+      <button class="sub-tab ${queueSubTab === "processed" ? "active" : ""}" data-subtab="processed">На модэрацыі${processedQueueData ? ` (${processedQueueData.total})` : ""}</button>
     </div>`;
 }
 
@@ -382,9 +385,8 @@ async function handleAction(id, act, card) {
   const editor = card.querySelector(".editor");
 
   if (act === "edit") {
-    const isOpen = editor.classList.toggle("open");
-    card.querySelector('button[data-act="edit"]')?.setAttribute("aria-expanded", isOpen ? "true" : "false");
-    editingId = isOpen ? id : null;
+    editor.classList.toggle("open");
+    editingId = editor.classList.contains("open") ? id : null;
     return;
   }
   if (act === "cancel") {
@@ -527,11 +529,7 @@ const renderers = { queue: renderQueue, published: renderPublished, stats: rende
 
 async function show(tab) {
   activeTab = tab;
-  document.querySelectorAll(".tab").forEach(t => {
-    const isActive = t.dataset.tab === tab;
-    t.classList.toggle("active", isActive);
-    t.setAttribute("aria-selected", isActive ? "true" : "false");
-  });
+  document.querySelectorAll(".tab").forEach(t => t.classList.toggle("active", t.dataset.tab === tab));
   document.getElementById("content").innerHTML = `<div class="empty">Загрузка…</div>`;
   try { await renderers[tab](); }
   catch (e) { document.getElementById("content").innerHTML = `<div class="empty">Памылка: ${esc(e.message || e)}</div>`; }
