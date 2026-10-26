@@ -24,6 +24,7 @@ import httpx
 import trafilatura
 import yaml
 
+from ..editorial import canonical_url
 from ..models import NewsItem, SourceType
 from ..utils.timezone import utc_now
 from .base_collector import BaseCollector
@@ -86,7 +87,7 @@ def extract_article_links(
     seen: set[str] = set()
     links: list[str] = []
     for href in hrefs:
-        url = urljoin(list_url, href.strip())
+        url = canonical_url(urljoin(list_url, href.strip()))
         parsed = urlparse(url)
         if parsed.scheme not in ("http", "https") or parsed.netloc != listing_host:
             continue
@@ -188,13 +189,18 @@ class WebScraperCollector(BaseCollector):
             return []
 
         items: list[NewsItem] = []
+        attempted = 0
+        if not links:
+            health.record_failure("No article links matched the listing")
+            return []
         for url in links:
-            if len(items) >= source.max_articles:
+            if attempted >= source.max_articles:
                 break
             if await self._url_known(url):
                 continue
             if not await self._allowed_by_robots(url):
                 continue
+            attempted += 1
             try:
                 await asyncio.sleep(ARTICLE_FETCH_DELAY_SECONDS)
                 article_response = await self._client.get(url)
@@ -234,7 +240,10 @@ class WebScraperCollector(BaseCollector):
                 )
             )
 
-        health.record_success()
+        if attempted and not items:
+            health.record_failure("No usable articles extracted from new URLs")
+        else:
+            health.record_success()
         logger.info(f"[{source.name}] collected {len(items)} new articles")
         return items
 

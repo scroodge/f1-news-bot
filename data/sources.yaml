@@ -10,21 +10,28 @@
 #
 # The scraper respects robots.txt, sends a descriptive User-Agent, waits
 # between article fetches, and auto-disables a source after repeated failures.
-# Patterns verified against the live sites on 2026-07-06.
+# English original reporting preferred. RSS sources live in src/config.py.
+# Listing URLs checked on 2026-10-26; robots.txt is checked at runtime.
 
 scrape_sources:
   - name: formula1.com
     list_url: https://www.formula1.com/en/latest/all
     link_pattern: /en/latest/article/
     enabled: true
-    max_articles: 5
+    max_articles: 10
 
   - name: the-race.com
-    list_url: https://www.the-race.com/formula-1/
+    list_url: https://www.the-race.com/category/formula-1/
     link_pattern: /formula-1/
-    exclude_patterns: ["/category/", "/page/", "/results/"]
+    exclude_patterns: ["/category/", "/page/", "/results/", "-race-results", "-race-result/", "-qualifying-results", "/what-time-"]
     enabled: true
-    max_articles: 5
+    max_articles: 15
+
+  - name: racingnews365.com
+    list_url: https://racingnews365.com/interview
+    link_pattern: /exclusive-
+    enabled: true
+    max_articles: 10
 
   - name: planetf1.com
     list_url: https://www.planetf1.com/news
@@ -33,8 +40,7 @@ scrape_sources:
     enabled: true
     max_articles: 5
 
-  # Cloudflare bot protection returns 403 to non-browser clients (verified
-  # 2026-07-06). Would need a headless browser (Playwright) — revisit later.
+  # Collected through working RSS feeds instead; avoid duplicate scrape traffic.
   - name: autosport.com
     list_url: https://www.autosport.com/f1/news/
     link_pattern: /f1/news/

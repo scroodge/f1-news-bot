@@ -27,6 +27,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 from .config import settings
+from .editorial import editorial_priority_sql
 from .models import NewsItem, NewsStatus, ProcessedNewsItem, SourceType, Stats
 from .utils.timezone import to_naive_utc
 
@@ -381,7 +382,12 @@ class DatabaseManager:
             result = await s.execute(
                 select(NewsItemDB)
                 .where(NewsItemDB.status == NewsStatus.COLLECTED)
-                .order_by(NewsItemDB.created_at.desc())
+                .order_by(
+                    func.date(NewsItemDB.created_at).desc(),
+                    editorial_priority_sql(NewsItemDB).desc(),
+                    NewsItemDB.created_at.desc(),
+                    NewsItemDB.id,
+                )
                 .offset(offset)
                 .limit(limit)
             )

@@ -7,6 +7,7 @@ import logging
 from typing import Any
 
 from ..database import db_manager
+from ..editorial import canonical_url, editorial_priority, normalized_title
 from ..models import NewsItem
 from .base_collector import BaseCollector
 from .rss_collector import RSSCollector
@@ -55,7 +56,14 @@ class NewsCollector:
                 logger.info(f"Collected {len(result)} items from {source_name}")
 
         # Remove duplicates
-        unique_news = self._remove_duplicates(all_news)
+        unique_news = self._remove_duplicates(
+            sorted(all_news, key=editorial_priority, reverse=True)
+        )
+        for item in unique_news:
+            try:
+                await db_manager.save_news_item(item)
+            except Exception:
+                logger.exception("Error saving news item: %s", item.url)
         logger.info(f"Total unique news items collected: {len(unique_news)}")
 
         return unique_news
@@ -72,17 +80,6 @@ class NewsCollector:
 
             news_items = await collector.collect_news()
 
-            # Save to database (unique URL constraint dedups atomically)
-            saved_count = 0
-            for item in news_items:
-                try:
-                    if await db_manager.save_news_item(item) is not None:
-                        saved_count += 1
-                except Exception as e:
-                    logger.error(f"Error saving news item: {e}")
-                    continue
-
-            logger.info(f"Saved {saved_count} new items from {source_name}")
             return news_items
 
         except Exception as e:
@@ -96,22 +93,14 @@ class NewsCollector:
         seen_titles = set()
 
         for item in news_items:
-            # Check URL uniqueness
-            if item.url in seen_urls:
+            item.url = canonical_url(item.url)
+            title = normalized_title(item.title)
+            # Similar titles can carry distinct facts: only collapse exact titles.
+            if item.url in seen_urls or title in seen_titles:
                 continue
-
-            # Check title similarity
-            title_lower = item.title.lower()
-            is_duplicate = False
-            for seen_title in seen_titles:
-                if self._calculate_similarity(title_lower, seen_title) > 0.8:
-                    is_duplicate = True
-                    break
-
-            if not is_duplicate:
-                unique_items.append(item)
-                seen_urls.add(item.url)
-                seen_titles.add(title_lower)
+            unique_items.append(item)
+            seen_urls.add(item.url)
+            seen_titles.add(title)
 
         return unique_items
 

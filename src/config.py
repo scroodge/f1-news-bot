@@ -14,9 +14,10 @@ from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 CommaSeparatedList = Annotated[list[str], NoDecode]
 
 DEFAULT_RSS_FEEDS = [
-    "https://www.f1news.ru/export/news.xml",
-    "https://www.f1-world.ru/news/rssexp6.xml",
     "https://feeds.bbci.co.uk/sport/formula1/rss.xml",
+    "https://www.autosport.com/rss/f1/news/",
+    "https://www.skysports.com/rss/12433",
+    "https://www.motorsport.com/rss/f1/news/",
 ]
 
 
@@ -58,10 +59,11 @@ class Settings(BaseSettings):
 
     # Sources
     rss_feeds: CommaSeparatedList = DEFAULT_RSS_FEEDS
+    rss_items_per_feed: int = 30
     telegram_channels: CommaSeparatedList = []
 
     # Processing
-    check_interval_minutes: int = 30
+    check_interval_minutes: int = 15
     min_relevance_score: float = 0.1
     max_news_items_per_check: int = 50
     max_posts_per_hour: int = 5

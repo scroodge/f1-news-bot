@@ -15,7 +15,7 @@ def test_defaults_without_env(monkeypatch):
     for var in ("RSS_FEEDS", "TELEGRAM_CHANNELS", "LLM_MODEL"):
         monkeypatch.delenv(var, raising=False)
     s = Settings(_env_file=None)
-    assert len(s.rss_feeds) == 3
+    assert len(s.rss_feeds) == 4
     assert s.telegram_channels == []
     assert s.llm_provider == "ollama"
     assert s.llm_model == "qwen2.5:14b"

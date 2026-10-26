@@ -2,17 +2,22 @@
 RSS feed collector for F1 news
 """
 
+import asyncio
 import logging
 from datetime import datetime
+from urllib import robotparser
+from urllib.parse import urlsplit
 
 import aiohttp
 import feedparser
 import trafilatura
 
 from ..config import settings
+from ..editorial import canonical_url
 from ..models import NewsItem, SourceType
 from ..utils.timezone import utc_now
 from .base_collector import BaseCollector
+from .web_scraper import ARTICLE_FETCH_DELAY_SECONDS, USER_AGENT
 
 logger = logging.getLogger(__name__)
 
@@ -24,16 +29,32 @@ class RSSCollector(BaseCollector):
         super().__init__("RSS Feeds", SourceType.RSS)
         self.feeds = settings.rss_feeds
         self.session = None
+        self._robots = {}
 
     async def initialize(self):
         """Initialize HTTP session"""
-        self.session = aiohttp.ClientSession()
+        self.session = aiohttp.ClientSession(headers={"User-Agent": USER_AGENT})
         logger.info("RSS collector initialized")
 
     async def _fetch_full_text(self, url: str) -> str | None:
         """Try to fetch and extract full article text via trafilatura.
         Returns the extracted text, or None on failure."""
         try:
+            host = urlsplit(url).netloc
+            if host not in self._robots:
+                async with self.session.get(f"https://{host}/robots.txt", timeout=15) as resp:
+                    if resp.status == 200:
+                        parser = robotparser.RobotFileParser()
+                        parser.parse((await resp.text()).splitlines())
+                        self._robots[host] = parser
+                    elif resp.status == 404:
+                        self._robots[host] = None
+                    else:
+                        return None
+            parser = self._robots[host]
+            if parser is not None and not parser.can_fetch(USER_AGENT, url):
+                return None
+            await asyncio.sleep(ARTICLE_FETCH_DELAY_SECONDS)
             async with self.session.get(url, timeout=15) as resp:
                 if resp.status != 200:
                     return None
@@ -75,7 +96,9 @@ class RSSCollector(BaseCollector):
                 feed = feedparser.parse(content)
 
                 news_items = []
-                for entry in feed.entries[:10]:  # Limit to 10 items per feed
+                for entry in feed.entries:
+                    if len(news_items) >= settings.rss_items_per_feed:
+                        break
                     try:
                         # Check if content is F1 related
                         if not self._is_f1_related(entry):
@@ -84,12 +107,22 @@ class RSSCollector(BaseCollector):
                         # Create news item
                         title = entry.get("title", "")
                         content = entry.get("summary", entry.get("description", ""))
-                        article_url = entry.get("link", "")
+                        article_url = canonical_url(entry.get("link", ""))
+                        if not article_url.startswith(("https://", "http://")):
+                            continue
+                        from ..database import db_manager
 
-                        # If RSS summary is short, try full-text extraction
-                        if article_url and len(content) < 300:
+                        if await db_manager.url_exists(article_url):
+                            continue
+
+                        # An RSS summary can be a long teaser. Prefer actual feed
+                        # content, otherwise attempt the full article regardless of length.
+                        full_content = entry.get("content", [])
+                        if full_content:
+                            content = max((c.get("value", "") for c in full_content), key=len)
+                        else:
                             full = await self._fetch_full_text(article_url)
-                            if full:
+                            if full and len(full) > len(self.clean_content(content)):
                                 content = full
 
                         # Extract media information

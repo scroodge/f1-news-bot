@@ -16,6 +16,7 @@ from pydantic import BaseModel, Field
 
 from ..config import settings
 from ..database import db_manager
+from ..editorial import editorial_priority
 from ..models import NewsItem, NewsStatus, ProcessedNewsItem
 from ..telegram_bot.formatting import format_channel_post
 from .auth import require_admin
@@ -68,6 +69,7 @@ def _serialize(item: ProcessedNewsItem | NewsItem, with_preview: bool = True) ->
         "url": item.url,
         "image_url": item.image_url,
         "relevance_score": item.relevance_score,
+        "editorial_priority": editorial_priority(item),
         "importance_level": item.importance_level if is_processed else 1,
         "sentiment": item.sentiment if is_processed else "neutral",
         "original_language": item.original_language if is_processed else None,

@@ -228,6 +228,7 @@ function rawCardHtml(item) {
     <div class="meta">
       <span>📥 ${esc(item.source)}</span>
       <span>🎯 ${item.relevance_score.toFixed(2)}</span>
+      <span title="Ацэнка крыніцы і прыкмет арыгінальнага матэрыялу; не пацвярджэнне эксклюзіўнасці">⭐ Прыярытэт: ${item.editorial_priority ?? 0}</span>
       <span>🌐 ${esc(item.original_language || "?")}</span>
     </div>
     <div class="row">

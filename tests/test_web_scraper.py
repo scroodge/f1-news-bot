@@ -98,3 +98,19 @@ def test_collector_health_report():
     assert "test" in report
     assert report["test"]["disabled"] is False
     assert report["test"]["error_streak"] == 0
+
+
+async def test_listing_without_article_links_is_unhealthy():
+    from unittest.mock import AsyncMock, Mock
+
+    source = ScrapeSource(name="test", list_url="https://x.example/news", link_pattern="/news/")
+    collector = WebScraperCollector([source])
+    collector._allowed_by_robots = AsyncMock(return_value=True)
+    collector._client = Mock(
+        get=AsyncMock(
+            return_value=Mock(text='<html><a href="/about">About</a></html>', url=source.list_url)
+        )
+    )
+    assert await collector._collect_from_source(source) == []
+    assert collector.health["test"].error_streak == 1
+    assert collector.health["test"].last_success is None
