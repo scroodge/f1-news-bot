@@ -92,7 +92,11 @@ class F1NewsBotApp:
                     items = await db_manager.get_by_status(status, limit=limit, offset=offset)
                 else:
                     # No filter: newest first across all statuses
-                    items = await db_manager.get_all(limit=limit, offset=offset)
+                    items = []
+                    for st in NewsStatus:
+                        items.extend(await db_manager.get_by_status(st, limit=limit))
+                    items.sort(key=lambda i: i.created_at, reverse=True)
+                    items = items[offset : offset + limit]
 
                 return {
                     "news_items": [item.model_dump() for item in items],
