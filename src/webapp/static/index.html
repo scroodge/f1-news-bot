@@ -84,6 +84,10 @@
   }
   button.action:active { transform: scale(.96); }
   button.action:disabled { opacity: .4; transform: none; }
+  button:focus-visible, input:focus-visible, textarea:focus-visible, .sub-tab:focus-visible, .orig-toggle:focus-visible {
+    outline: 2px solid var(--btn);
+    outline-offset: 2px;
+  }
   button.ghost { background: var(--bg); color: var(--fg); border: 1px solid color-mix(in srgb, var(--fg) 15%, transparent); font-weight: 500; }
   button.ghost:active { background: color-mix(in srgb, var(--fg) 6%, transparent); }
   button.danger { background: #e74c3c; color: #fff; }
@@ -178,7 +182,7 @@
   </div>
 </header>
 <main id="content"><div class="empty">Загрузка…</div></main>
-<div class="toast" id="toast"></div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
 
 <script>
 const tg = window.Telegram?.WebApp;
@@ -214,7 +218,7 @@ const esc = (s) => (s || "").replace(/[&<>"]/g, c => ({ "&":"&amp;", "<":"&lt;",
 // --- raw-item card ----------------------------------------------------------
 
 function rawCardHtml(item) {
-  const img = item.image_url ? `<img class="card-img" src="${esc(item.image_url)}" loading="lazy" onerror="this.remove()">` : "";
+  const img = item.image_url ? `<img class="card-img" src="${esc(item.image_url)}" alt="Малюнак да навіны" loading="lazy" onerror="this.remove()">` : "";
   const snippet = (item.content || "").length > 400 ? item.content.slice(0, 400) + "..." : item.content;
   const collapsed = `📰 ${item.title}\n\n${snippet}\n\n🔗 ${item.url}`;
   const full = `📰 ${item.title}\n\n${item.content}\n\n🔗 ${item.url}`;
@@ -242,7 +246,7 @@ function processedCardHtml(item) {
   const usageLine = usage.prompt_tokens != null
     ? `🪙 ${usage.prompt_tokens}+${usage.completion_tokens}`
     : "";
-  const img = item.image_url ? `<img class="card-img" src="${esc(item.image_url)}" loading="lazy" onerror="this.remove()">` : "";
+  const img = item.image_url ? `<img class="card-img" src="${esc(item.image_url)}" alt="Малюнак да навіны" loading="lazy" onerror="this.remove()">` : "";
   return `
   <div class="card" data-id="${item.id}">
     ${img}
@@ -259,14 +263,14 @@ function processedCardHtml(item) {
       <div><div class="orig-inner"><b>${esc(item.title)}</b>\n\n${esc(item.original_content || "")}</div></div>
     </div>
     <div class="editor" id="edit-${item.id}">
-      <label>Загаловак</label>
-      <input name="title_be" value="${esc(item.title_be || "")}">
-      <label>Тэкст</label>
-      <textarea name="summary">${esc(item.summary || "")}</textarea>
-      <label>Галоўнае (радок на пункт)</label>
-      <textarea name="key_points" rows="3">${esc((item.key_points || []).join("\n"))}</textarea>
-      <label>Тэгі (праз коску)</label>
-      <input name="tags" value="${esc((item.tags || []).join(", "))}">
+      <label for="edit-title-${item.id}">Загаловак</label>
+      <input id="edit-title-${item.id}" name="title_be" value="${esc(item.title_be || "")}">
+      <label for="edit-summary-${item.id}">Тэкст</label>
+      <textarea id="edit-summary-${item.id}" name="summary">${esc(item.summary || "")}</textarea>
+      <label for="edit-kp-${item.id}">Галоўнае (радок на пункт)</label>
+      <textarea id="edit-kp-${item.id}" name="key_points" rows="3">${esc((item.key_points || []).join("\n"))}</textarea>
+      <label for="edit-tags-${item.id}">Тэгі (праз коску)</label>
+      <input id="edit-tags-${item.id}" name="tags" value="${esc((item.tags || []).join(", "))}">
       <div class="row">
         <button class="action" data-act="save">Захаваць</button>
         <button class="action ghost" data-act="generate-keypoints">🔑 Галоўнае</button>
