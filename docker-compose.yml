@@ -74,6 +74,10 @@ services:
       f1-news-main:
         condition: service_started
     command: ["python", "telegram_bot_standalone.py"]
+    # The image's HTTP healthcheck targets the FastAPI app; the bot serves no
+    # HTTP, so it would always report unhealthy. Crashes are handled by restart.
+    healthcheck:
+      disable: true
 
 volumes:
   redis_data:
