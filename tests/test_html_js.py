@@ -56,7 +56,7 @@ def test_html_has_translate_button():
     assert "Перакласці" in html or "translate" in html
 
 
-def test_icon_buttons_have_aria_labels():
+def test_html_accessibility_attributes():
     html = INDEX_HTML.read_text(encoding="utf-8")
     assert 'aria-label="Адхіліць"' in html
     assert 'aria-label="Рэдагаваць"' in html
