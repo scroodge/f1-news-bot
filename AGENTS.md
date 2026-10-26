@@ -82,7 +82,13 @@ it via `ssh -f -N -L 5433:localhost:5433 contabo`). `run_all.py` is deprecated.
 - **Tooling**: uv + `pyproject.toml` (no requirements.txt), ruff (lint+format,
   config in pyproject), pytest in `tests/`, GitHub Actions CI
   (`.github/workflows/ci.yml`). Run `uv run ruff check . && uv run pytest`
-  before committing.
+  before committing. Tests include:
+  - `test_html_js.py` — validates inline JS with `node --check` (catches stray
+    braces that crash the Mini App)
+  - `test_backends.py` — verifies all LLM backends can be instantiated (catches
+    missing abstract method implementations)
+  - `test_miniapp_api.py::test_edit_long_summary_doesnt_overflow` — ensures
+    EditRequest.max_length can hold full translated articles
 - **LLM backends**: two providers keyed by `LLM_PROVIDER` (ollama or claude).
   Ollama: remote server at `LLM_BASE_URL` with Bearer `LLM_API_KEY`
   (qwen2.5:14b — its Belarusian is poor; Claude is the production choice).
