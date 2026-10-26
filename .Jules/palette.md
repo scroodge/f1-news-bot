@@ -1,5 +1,3 @@
-# Palette Journal - Critical Learnings
-
-## 2026-07-06 - Initial setup
-**Learning:** Telegram Mini App UI elements require explicit ARIA attributes and accessible touch/focus targets for keyboard and screen reader accessibility.
-**Action:** Always verify ARIA attributes (`aria-label`, `aria-expanded`, `aria-controls`) and focus states on custom interactive elements in `index.html`.
+## 2026-07-06 - Accessible form labels and icon buttons in Mini App dynamic templates
+**Learning:** Dynamic HTML template cards generated via JS in single-file Mini Apps often lack explicitly tied labels (`for`/`id`) and missing ARIA labels on icon-only buttons like `✕` and `✏️`.
+**Action:** Always append item IDs to form element `id` and label `for` attributes when dynamically rendering forms, and add explicit `aria-label`s in Belarusian to icon-only buttons.
