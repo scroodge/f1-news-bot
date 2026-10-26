@@ -160,6 +160,10 @@
   .count-chip {
     font-size: 11px; color: var(--hint); font-weight: 500; margin-left: auto;
   }
+  :focus-visible {
+    outline: 2px solid var(--btn);
+    outline-offset: 2px;
+  }
   @media (prefers-color-scheme: dark) {
     .stat b { color: var(--fg); }
   }
@@ -222,7 +226,7 @@ function rawCardHtml(item) {
   return `
   <div class="card" data-id="${item.id}">
     ${img}
-    <div class="preview"><div class="preview-collapsed" id="p-${item.id}">${esc(collapsed)}</div>${isLong ? '<button class="expand-btn" data-act="expand-preview" data-target="p-'+item.id+'" data-full="'+esc(full)+'">📖 Паказаць цалкам</button>' : ''}</div>
+    <div class="preview"><div class="preview-collapsed" id="p-${item.id}">${esc(collapsed)}</div>${isLong ? '<button class="expand-btn" data-act="expand-preview" data-target="p-'+item.id+'" data-full="'+esc(full)+'" aria-expanded="false">📖 Паказаць цалкам</button>' : ''}</div>
     <div class="meta">
       <span>📥 ${esc(item.source)}</span>
       <span>🎯 ${item.relevance_score.toFixed(2)}</span>
@@ -246,7 +250,7 @@ function processedCardHtml(item) {
   return `
   <div class="card" data-id="${item.id}">
     ${img}
-    <div class="preview"><div class="preview-collapsed" id="pp-${item.id}">${esc(item.preview)}</div><button class="expand-btn" data-act="expand-preview" data-target="pp-${item.id}" data-full="${esc(item.summary || item.preview)}">📖 Паказаць цалкам</button></div>
+    <div class="preview"><div class="preview-collapsed" id="pp-${item.id}">${esc(item.preview)}</div><button class="expand-btn" data-act="expand-preview" data-target="pp-${item.id}" data-full="${esc(item.summary || item.preview)}" aria-expanded="false">📖 Паказаць цалкам</button></div>
     <div class="meta">
       <span>📥 ${esc(item.source)}</span>
       <span>⭐ ${item.importance_level}/5</span>
@@ -254,19 +258,19 @@ function processedCardHtml(item) {
       <span>🌐 ${esc(item.original_language || "?")}</span>
       ${usageLine ? `<span>${usageLine}</span>` : ""}
     </div>
-    <button class="orig-toggle" data-act="toggle-original">📄 Арыгінал</button>
+    <button class="orig-toggle" data-act="toggle-original" aria-expanded="false">📄 Арыгінал</button>
     <div class="orig-content" id="orig-${item.id}">
       <div><div class="orig-inner"><b>${esc(item.title)}</b>\n\n${esc(item.original_content || "")}</div></div>
     </div>
     <div class="editor" id="edit-${item.id}">
-      <label>Загаловак</label>
-      <input name="title_be" value="${esc(item.title_be || "")}">
-      <label>Тэкст</label>
-      <textarea name="summary">${esc(item.summary || "")}</textarea>
-      <label>Галоўнае (радок на пункт)</label>
-      <textarea name="key_points" rows="3">${esc((item.key_points || []).join("\n"))}</textarea>
-      <label>Тэгі (праз коску)</label>
-      <input name="tags" value="${esc((item.tags || []).join(", "))}">
+      <label for="edit-title-${item.id}">Загаловак</label>
+      <input id="edit-title-${item.id}" name="title_be" value="${esc(item.title_be || "")}">
+      <label for="edit-summary-${item.id}">Тэкст</label>
+      <textarea id="edit-summary-${item.id}" name="summary">${esc(item.summary || "")}</textarea>
+      <label for="edit-kp-${item.id}">Галоўнае (радок на пункт)</label>
+      <textarea id="edit-kp-${item.id}" name="key_points" rows="3">${esc((item.key_points || []).join("\n"))}</textarea>
+      <label for="edit-tags-${item.id}">Тэгі (праз коску)</label>
+      <input id="edit-tags-${item.id}" name="tags" value="${esc((item.tags || []).join(", "))}">
       <div class="row">
         <button class="action" data-act="save">Захаваць</button>
         <button class="action ghost" data-act="generate-keypoints">🔑 Галоўнае</button>
@@ -348,7 +352,7 @@ async function renderPublished() {
   }
   el.innerHTML = data.items.map(i => `
     <div class="card" style="opacity:.85">
-      <div class="preview"><div class="preview-collapsed" id="ph-${i.id}">${esc(i.preview)}</div><button class="expand-btn" data-act="expand-preview" data-target="ph-${i.id}" data-full="${esc(i.summary || i.preview)}">📖 Паказаць цалкам</button></div>
+      <div class="preview"><div class="preview-collapsed" id="ph-${i.id}">${esc(i.preview)}</div><button class="expand-btn" data-act="expand-preview" data-target="ph-${i.id}" data-full="${esc(i.summary || i.preview)}" aria-expanded="false">📖 Паказаць цалкам</button></div>
       <div class="meta">
         <span>📥 ${esc(i.source)}</span>
         <span>⭐ ${i.importance_level}/5</span>
@@ -554,7 +558,10 @@ document.getElementById("content").addEventListener("click", async (e) => {
   try {
     if (button.dataset.act === "toggle-original") {
       const content = button.nextElementSibling;
-      if (content) content.classList.toggle("open");
+      if (content) {
+        const isOpen = content.classList.toggle("open");
+        button.setAttribute("aria-expanded", isOpen ? "true" : "false");
+      }
       return;
     }
     if (button.dataset.act === "expand-preview") {
@@ -566,9 +573,11 @@ document.getElementById("content").addEventListener("click", async (e) => {
           }
           target.classList.remove("preview-collapsed");
           button.textContent = "📖 Схаваць";
+          button.setAttribute("aria-expanded", "true");
         } else {
           target.classList.add("preview-collapsed");
           button.textContent = "📖 Паказаць цалкам";
+          button.setAttribute("aria-expanded", "false");
         }
       }
       return;
