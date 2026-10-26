@@ -16,25 +16,21 @@ STATUS_LABELS = {
 def format_channel_post(item: ProcessedNewsItem) -> str:
     """The post exactly as it goes to the channel — Belarusian output"""
     title = item.translated_title or item.title
-    message = f"🏎️ {title}\n\n"
-    if item.key_points:
-        message += "🔑 Галоўнае:\n"
-        for point in item.key_points[:3]:
-            message += f"• {point}\n"
-        message += "\n"
-    if item.translated_summary:
-        body = item.translated_summary
-    elif item.summary:
-        body = item.summary
-    else:
-        body = ""
-    if body:
-        message += f"{body}\n\n"
-    message += f"📰 Крыніца: {item.source}\n"
-    message += f"🔗 Чытаць: {item.url}"
-    if item.tags:
-        tags_str = " ".join([f"#{t.replace(' ', '_')}" for t in item.tags[:3]])
-        message += f"\n\n{tags_str}"
+    kp_str = (
+        "🔑 Галоўнае:\n" + "\n".join([f"• {p}" for p in item.key_points[:3]]) + "\n\n"
+        if item.key_points
+        else ""
+    )
+    body = item.translated_summary or item.summary
+    body_str = f"{body}\n\n" if body else ""
+    tags_str = (
+        "\n\n" + " ".join([f"#{t.replace(' ', '_')}" for t in item.tags[:3]]) if item.tags else ""
+    )
+
+    message = (
+        f"🏎️ {title}\n\n{kp_str}{body_str}📰 Крыніца: {item.source}\n🔗 Чытаць: {item.url}{tags_str}"
+    )
+
     # Telegram hard limit: 4096 chars
     if len(message) > 4096:
         message = message[:4093] + "..."
