@@ -70,3 +70,43 @@ def test_accessibility_attributes_present():
     assert "aria-expanded=" in html
     assert "aria-controls=" in html
     assert ":focus-visible" in html
+
+
+def test_story_cards_escape_evidence_and_incomplete_translation_requires_confirmation():
+    """Run the actual rendering and action functions with a small DOM/network stub."""
+    import json
+
+    script = _script_content()
+    functions = script[script.index("const esc =") : script.index("// --- wiring")]
+    assertions = r"""
+const assert = require('node:assert/strict');
+(async () => {
+  const sample = {id:'one', title:'Ferrari <img src=x onerror=alert(1)>',
+    content:'F1 news', url:'https://example.com/article', source:'test', relevance_score:0.8,
+    editorial_reasons:[{label:'source', evidence:'<script>unsafe</script>'}],
+    text_quality:{needs_confirmation:true, label:'RSS-анонс', characters:20},
+    source_references:[{url:'javascript:alert(1)', source:'test', evidence:'<script>unsafe</script>'}],
+    related_items:[{id:'two', title:'Other facts', content:'Extra', source:'other', relevance_score:0.8}]
+  };
+  const rendered = storyCardHtml(sample);
+  assert(rendered.includes('data-id="one"'));
+  assert(rendered.includes('data-id="two"'));
+  assert(!rendered.includes('<script>unsafe</script>'));
+  assert(!rendered.includes('href="javascript:'));
+  assert(rendered.includes('&lt;img'));
+  let posts = 0;
+  global.call = async (path) => {if (path.includes('/translate')) posts++; return sample;};
+  global.confirm = () => false;
+  const card = {querySelector:()=>null, style:{}};
+  await handleAction('one', 'translate', card);
+  assert.equal(posts, 0);
+  assert.equal(card.style.pointerEvents, undefined);
+})().catch(error => {console.error(error); process.exitCode=1;});
+"""
+    result = subprocess.run(
+        ["node", "-e", "const code = " + json.dumps(functions + assertions) + "; eval(code);"],
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+    assert result.returncode == 0, result.stderr

@@ -15,6 +15,7 @@ import trafilatura
 from ..config import settings
 from ..editorial import canonical_url
 from ..models import NewsItem, SourceType
+from ..provenance import references_from_html, text_evidence
 from ..utils.timezone import utc_now
 from .base_collector import BaseCollector
 from .web_scraper import ARTICLE_FETCH_DELAY_SECONDS, USER_AGENT
@@ -30,6 +31,7 @@ class RSSCollector(BaseCollector):
         self.feeds = settings.rss_feeds
         self.session = None
         self._robots = {}
+        self._article_details = {}
 
     async def initialize(self):
         """Initialize HTTP session"""
@@ -39,6 +41,7 @@ class RSSCollector(BaseCollector):
     async def _fetch_full_text(self, url: str) -> str | None:
         """Try to fetch and extract full article text via trafilatura.
         Returns the extracted text, or None on failure."""
+        self._article_details.pop(url, None)
         try:
             host = urlsplit(url).netloc
             if host not in self._robots:
@@ -61,7 +64,12 @@ class RSSCollector(BaseCollector):
                 html = await resp.text()
             extracted = trafilatura.bare_extraction(html, url=url, with_metadata=True)
             if extracted and extracted.text and len(extracted.text.strip()) >= 100:
-                return extracted.text.strip()
+                text = extracted.text.strip()
+                self._article_details[url] = {
+                    **text_evidence(text, "article", html),
+                    "references": references_from_html(html, url),
+                }
+                return text
         except Exception as e:
             logger.debug(f"Full-text fetch failed for {url}: {e}")
         return None
@@ -115,15 +123,24 @@ class RSSCollector(BaseCollector):
                         if await db_manager.url_exists(article_url):
                             continue
 
-                        # An RSS summary can be a long teaser. Prefer actual feed
-                        # content, otherwise attempt the full article regardless of length.
+                        info = text_evidence(self.clean_content(content), "rss_summary", content)
+                        refs = references_from_html(content, article_url, fragment=True)
                         full_content = entry.get("content", [])
                         if full_content:
                             content = max((c.get("value", "") for c in full_content), key=len)
-                        else:
-                            full = await self._fetch_full_text(article_url)
-                            if full and len(full) > len(self.clean_content(content)):
-                                content = full
+                            refs += references_from_html(content, article_url, fragment=True)
+                            info = text_evidence(
+                                self.clean_content(content), "feed_content", content
+                            )
+                        # Encoded feed content may also be a teaser; attempt extraction.
+                        full = await self._fetch_full_text(article_url)
+                        details = self._article_details.pop(article_url, {})
+                        refs += details.get("references", [])
+                        if full and len(full) > len(self.clean_content(content)):
+                            content = full
+                            info = details or text_evidence(full, "article")
+                        content = self.clean_content(content) if "<" in content else content
+                        info["references"] = list({r["url"]: r for r in refs}.values())[:5]
 
                         # Extract media information
                         image_url = self._extract_image_url(entry)
@@ -140,6 +157,7 @@ class RSSCollector(BaseCollector):
                             image_url=image_url,
                             video_url=video_url,
                             media_type=media_type,
+                            collection_info=info,
                         )
 
                         # Calculate relevance score and extract keywords

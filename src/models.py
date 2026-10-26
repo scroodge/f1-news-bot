@@ -46,6 +46,8 @@ class NewsItem(BaseModel):
     keywords: list[str] = Field(default_factory=list)
     status: NewsStatus = NewsStatus.COLLECTED
     created_at: datetime = Field(default_factory=datetime.utcnow)
+    story_id: str | None = None
+    collection_info: dict = Field(default_factory=dict)
     # Media fields
     image_url: str | None = None
     video_url: str | None = None

@@ -147,6 +147,8 @@ class ContentProcessor:
             image_url=news_item.image_url,
             video_url=news_item.video_url,
             media_type=news_item.media_type,
+            story_id=news_item.story_id,
+            collection_info=news_item.collection_info,
             summary=self._safe_summary(short_summary, sonnet_summary, analysis.summary_be),
             sentiment=analysis.sentiment,
             importance_level=analysis.importance_level,

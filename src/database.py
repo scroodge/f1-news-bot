@@ -15,12 +15,15 @@ from sqlalchemy import (
     DateTime,
     Enum,
     Float,
+    Index,
     Integer,
     String,
     Text,
     Uuid,
+    cast,
     func,
     select,
+    update,
 )
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
@@ -58,6 +61,10 @@ class NewsItemDB(Base):
         index=True,
     )
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    story_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
+    collection_info: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    __table_args__ = (Index("ix_news_items_created_at", "created_at"),)
 
     # Media fields
     image_url: Mapped[str | None] = mapped_column(String, nullable=True)
@@ -108,6 +115,8 @@ def _to_model(item: NewsItemDB) -> ProcessedNewsItem | NewsItem:
         "image_url": item.image_url,
         "video_url": item.video_url,
         "media_type": item.media_type,
+        "story_id": item.story_id or item.id.hex,
+        "collection_info": item.collection_info or {},
     }
     if item.status == NewsStatus.COLLECTED:
         return NewsItem(**base)
@@ -175,6 +184,8 @@ class DatabaseManager:
                 image_url=news_item.image_url,
                 video_url=news_item.video_url,
                 media_type=news_item.media_type,
+                story_id=news_item.story_id or uuid.uuid4().hex,
+                collection_info=news_item.collection_info,
             )
             s.add(db_item)
             try:
@@ -381,6 +392,88 @@ class DatabaseManager:
                 .limit(limit)
             )
             return [_to_model(i) for i in result.scalars().all()]
+
+    async def get_story_candidates(self) -> list[NewsItem]:
+        """One bounded read per collection cycle, shared by all new items."""
+        async with self.session() as s:
+            rows = await s.execute(
+                select(NewsItemDB)
+                .where(NewsItemDB.created_at >= datetime.utcnow() - timedelta(days=3))
+                .order_by(NewsItemDB.created_at.desc())
+                .limit(2000)
+            )
+            return [_to_model(row) for row in rows.scalars()]
+
+    async def get_collected_stories(self, limit: int = 10, offset: int = 0):
+        """Page story IDs first, then load all their collected members in one query."""
+        key = func.coalesce(NewsItemDB.story_id, func.replace(cast(NewsItemDB.id, String), "-", ""))
+        async with self.session() as s:
+            total = await s.scalar(
+                select(func.count(func.distinct(key))).where(
+                    NewsItemDB.status == NewsStatus.COLLECTED
+                )
+            )
+            keys = (
+                (
+                    await s.execute(
+                        select(key)
+                        .where(NewsItemDB.status == NewsStatus.COLLECTED)
+                        .group_by(key)
+                        .order_by(
+                            func.max(func.date(NewsItemDB.created_at)).desc(),
+                            func.max(editorial_priority_sql(NewsItemDB)).desc(),
+                            func.max(NewsItemDB.created_at).desc(),
+                            key,
+                        )
+                        .offset(offset)
+                        .limit(limit)
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            if not keys:
+                return [], total or 0
+            rows = (
+                (
+                    await s.execute(
+                        select(NewsItemDB)
+                        .where(NewsItemDB.status == NewsStatus.COLLECTED, key.in_(keys))
+                        .order_by(NewsItemDB.created_at, NewsItemDB.id)
+                    )
+                )
+                .scalars()
+                .all()
+            )
+            groups = {k: [] for k in keys}
+            for row in rows:
+                model = _to_model(row)
+                groups[model.story_id].append(model)
+            return list(groups.values()), total or 0
+
+    async def get_item_by_url(self, url: str) -> NewsItem | None:
+        async with self.session() as s:
+            row = (
+                await s.execute(select(NewsItemDB).where(NewsItemDB.url == url))
+            ).scalar_one_or_none()
+            return _to_model(row) if row else None
+
+    async def merge_stories(self, first_id: str, second_id: str):
+        """Attach a manually fetched cited original without altering any lifecycle state."""
+        async with self.session() as s:
+            first = await s.get(NewsItemDB, uuid.UUID(first_id))
+            second = await s.get(NewsItemDB, uuid.UUID(second_id))
+            if not first or not second:
+                return
+            key = first.story_id or first.id.hex
+            other = second.story_id
+            if other and other != key:
+                await s.execute(
+                    update(NewsItemDB).where(NewsItemDB.story_id == other).values(story_id=key)
+                )
+            first.story_id = key
+            second.story_id = key
+            await s.commit()
 
     async def get_unprocessed_news(self, limit: int = 10) -> list[NewsItem]:
         """Collected items relevant enough to be worth AI processing"""

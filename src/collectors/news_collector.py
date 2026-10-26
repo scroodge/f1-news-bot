@@ -7,8 +7,9 @@ import logging
 from typing import Any
 
 from ..database import db_manager
-from ..editorial import canonical_url, editorial_priority, normalized_title
+from ..editorial import canonical_url, editorial_priority
 from ..models import NewsItem
+from ..stories import assign_stories
 from .base_collector import BaseCollector
 from .rss_collector import RSSCollector
 from .telegram_collector import TelegramCollector
@@ -59,6 +60,8 @@ class NewsCollector:
         unique_news = self._remove_duplicates(
             sorted(all_news, key=editorial_priority, reverse=True)
         )
+        recent = await db_manager.get_story_candidates()
+        assign_stories(unique_news, recent)
         for item in unique_news:
             try:
                 await db_manager.save_news_item(item)
@@ -90,17 +93,14 @@ class NewsCollector:
         """Remove duplicate news items"""
         unique_items = []
         seen_urls = set()
-        seen_titles = set()
 
         for item in news_items:
             item.url = canonical_url(item.url)
-            title = normalized_title(item.title)
-            # Similar titles can carry distinct facts: only collapse exact titles.
-            if item.url in seen_urls or title in seen_titles:
+            # Keep every publication; story grouping preserves complementary facts.
+            if item.url in seen_urls:
                 continue
             unique_items.append(item)
             seen_urls.add(item.url)
-            seen_titles.add(title)
 
         return unique_items
 

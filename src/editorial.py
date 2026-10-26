@@ -71,3 +71,38 @@ def editorial_priority_sql(model):
 
 def normalized_title(title: str) -> str:
     return " ".join(re.findall(r"\w+", title.lower()))
+
+
+def editorial_reasons(item) -> list[dict]:
+    host = (urlsplit(item.url).hostname or "").removeprefix("www.")
+    text = f"{item.title} {item.content}".lower()
+    reasons = [
+        {
+            "code": "source",
+            "label": f"Прыярытэт крыніцы: {SOURCE_PRIORITIES.get(host, 0)}",
+            "evidence": host,
+        }
+    ]
+    originals = [s for s in ORIGINAL_SIGNALS if s in text]
+    secondary = [s for s in SECONDARY_SIGNALS if s in text]
+    if originals:
+        reasons.append(
+            {
+                "code": "original_signal",
+                "label": "Прыкметы ўласнага матэрыялу (+2)",
+                "evidence": ", ".join(originals),
+            }
+        )
+    if secondary:
+        reasons.append(
+            {
+                "code": "secondary_signal",
+                "label": "Прыкметы пераказу (−2)",
+                "evidence": ", ".join(secondary),
+            }
+        )
+    if (item.collection_info or {}).get("references"):
+        reasons.append(
+            {"code": "attribution", "label": "Ёсць спасылка на іншае выданне", "evidence": ""}
+        )
+    return reasons

@@ -26,6 +26,7 @@ import yaml
 
 from ..editorial import canonical_url
 from ..models import NewsItem, SourceType
+from ..provenance import article_url, references_from_html, text_evidence
 from ..utils.timezone import utc_now
 from .base_collector import BaseCollector
 
@@ -114,6 +115,10 @@ def extract_article(html: str, url: str) -> dict | None:
         "text": extracted.text.strip(),
         "image": extracted.image or None,
         "date": extracted.date or None,
+        "collection_info": {
+            **text_evidence(extracted.text.strip(), "article", html),
+            "references": references_from_html(html, url),
+        },
     }
 
 
@@ -237,6 +242,7 @@ class WebScraperCollector(BaseCollector):
                     relevance_score=self.calculate_relevance_score(title, text),
                     keywords=self.extract_keywords(title, text),
                     image_url=article["image"],
+                    collection_info=article["collection_info"],
                 )
             )
 
@@ -246,6 +252,39 @@ class WebScraperCollector(BaseCollector):
             health.record_success()
         logger.info(f"[{source.name}] collected {len(items)} new articles")
         return items
+
+    async def fetch_reference(self, url: str) -> NewsItem | None:
+        """Fetch one attributed article on admin request; no redirects to unchecked hosts."""
+        if not article_url(url):
+            return None
+        if self._client is None:
+            await self.initialize()
+        if not await self._allowed_by_robots(url):
+            return None
+        await asyncio.sleep(ARTICLE_FETCH_DELAY_SECONDS)
+        response = await self._client.get(url, follow_redirects=False)
+        if response.status_code != 200:
+            return None
+        article = extract_article(response.text, url)
+        if not article or not article["title"] or len(article["text"]) < MIN_ARTICLE_CHARS:
+            return None
+        published_at = utc_now()
+        if article["date"]:
+            try:
+                published_at = datetime.fromisoformat(article["date"])
+            except ValueError:
+                pass
+        return NewsItem(
+            title=article["title"],
+            content=article["text"],
+            url=url,
+            source=urlparse(url).netloc,
+            source_type=SourceType.WEB,
+            published_at=published_at,
+            image_url=article["image"],
+            relevance_score=self.calculate_relevance_score(article["title"], article["text"]),
+            collection_info=article["collection_info"],
+        )
 
     async def collect_news(self) -> list[NewsItem]:
         if self._client is None:

@@ -10,14 +10,16 @@ import asyncio
 import logging
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
 from ..config import settings
 from ..database import db_manager
-from ..editorial import editorial_priority
+from ..editorial import canonical_url, editorial_priority, editorial_reasons
 from ..models import NewsItem, NewsStatus, ProcessedNewsItem
+from ..provenance import article_url, named_attributions, quality_info
+from ..stories import representative
 from ..telegram_bot.formatting import format_channel_post
 from .auth import require_admin
 
@@ -70,6 +72,11 @@ def _serialize(item: ProcessedNewsItem | NewsItem, with_preview: bool = True) ->
         "image_url": item.image_url,
         "relevance_score": item.relevance_score,
         "editorial_priority": editorial_priority(item),
+        "editorial_reasons": editorial_reasons(item),
+        "text_quality": quality_info(item),
+        "source_references": (item.collection_info or {}).get("references", []),
+        "named_attributions": named_attributions(item.content, item.url),
+        "story_id": item.story_id,
         "importance_level": item.importance_level if is_processed else 1,
         "sentiment": item.sentiment if is_processed else "neutral",
         "original_language": item.original_language if is_processed else None,
@@ -173,12 +180,19 @@ async def edit_item(item_id: str, edit: EditRequest):
 
 
 @api.get("/queue/raw")
-async def get_raw_queue(page: int = 0, page_size: int = 10):
-    total = await db_manager.count_by_status(NewsStatus.COLLECTED)
-    items = await db_manager.get_collected_news(limit=page_size, offset=page * page_size)
+async def get_raw_queue(page: int = Query(0, ge=0), page_size: int = Query(10, ge=1, le=50)):
+    groups, total = await db_manager.get_collected_stories(limit=page_size, offset=page * page_size)
+    items = []
+    for members in groups:
+        primary = representative(members)
+        data = _serialize(primary)
+        data["related_items"] = [_serialize(i) for i in members if i.id != primary.id]
+        data["story_size"] = len(members)
+        items.append(data)
     return {
-        "items": [_serialize(i) for i in items],
+        "items": items,
         "total": total,
+        "total_articles": await db_manager.count_by_status(NewsStatus.COLLECTED),
         "page": page,
         "page_size": page_size,
     }
@@ -194,14 +208,55 @@ async def reject_all_raw():
 # --- admin-triggered AI actions ----------------------------------------------
 
 
+class CollectOriginalRequest(BaseModel):
+    url: str = Field(max_length=2048)
+
+
+@api.post("/items/{item_id}/collect-original")
+async def collect_original(item_id: str, request: CollectOriginalRequest):
+    item = await db_manager.get_item(item_id)
+    if item is None:
+        raise HTTPException(status_code=404, detail="Навіна не знойдзена")
+    url = canonical_url(request.url)
+    attributed = {r.get("url") for r in (item.collection_info or {}).get("references", [])}
+    if url not in attributed or not article_url(url):
+        raise HTTPException(status_code=400, detail="Спасылка не пацверджана атрыбуцыяй артыкула")
+    original = await db_manager.get_item_by_url(url)
+    if original is None:
+        from ..collectors.web_scraper import WebScraperCollector
+
+        collector = WebScraperCollector(sources=[])
+        try:
+            original = await collector.fetch_reference(url)
+        except Exception:
+            logger.exception("Failed to fetch attributed original: %s", url)
+            original = None
+        finally:
+            await collector.close()
+        if original is None:
+            raise HTTPException(
+                status_code=422, detail="Не ўдалося атрымаць тэкст. Адкрыйце спасылку на выданне."
+            )
+        original.story_id = item.story_id
+        await db_manager.save_news_item(original)
+        original = await db_manager.get_item_by_url(url)
+    await db_manager.merge_stories(item_id, original.id)
+    return _serialize(await db_manager.get_item(original.id))
+
+
 @api.post("/items/{item_id}/translate")
-async def translate_item(item_id: str):
+async def translate_item(item_id: str, allow_incomplete: bool = False):
     item = await db_manager.get_item(item_id)
     if item is None:
         raise HTTPException(status_code=404, detail="Item not found")
     if item.status not in (NewsStatus.COLLECTED, NewsStatus.PROCESSED):
         raise HTTPException(
             status_code=409, detail="Item cannot be translated in its current state"
+        )
+    quality = quality_info(item)
+    if quality["needs_confirmation"] and not allow_incomplete:
+        raise HTTPException(
+            status_code=409, detail=quality["label"] + ". Пацвердзіце пераклад даступнага тэксту."
         )
     processor = await get_content_processor()
     # Run translation in background, return immediately

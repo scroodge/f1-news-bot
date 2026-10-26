@@ -29,3 +29,19 @@ async def test_long_teaser_fetches_full_text_and_known_urls_are_skipped(monkeypa
     assert items[0].url == "https://example.com/f1/new"
     assert items[0].content == full
     collector._fetch_full_text.assert_awaited_once_with("https://example.com/f1/new")
+
+
+async def test_long_teaser_without_article_keeps_quality_warning(monkeypatch):
+    teaser = "Ferrari Formula 1 news. " * 60
+    xml = f"""<rss version="2.0"><channel><title>F1</title><item>
+    <title>Ferrari F1</title><link>https://example.com/f1/new</link>
+    <description>{teaser}</description></item></channel></rss>"""
+    context = AsyncMock()
+    context.__aenter__.return_value = Mock(status=200, text=AsyncMock(return_value=xml))
+    collector = RSSCollector()
+    collector.session = Mock(get=Mock(return_value=context))
+    collector._fetch_full_text = AsyncMock(return_value=None)
+    monkeypatch.setattr("src.database.db_manager.url_exists", AsyncMock(return_value=False))
+    items = await collector._collect_from_feed("https://example.com/rss")
+    assert items[0].collection_info["text_quality"] == "teaser"
+    assert len(items[0].content) > 800

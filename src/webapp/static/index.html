@@ -218,6 +218,40 @@ async function call(path, options = {}) {
 
 const esc = (s) => (s || "").replace(/[&<>"]/g, c => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;" }[c]));
 
+function safeLink(url) {
+  try { const parsed = new URL(url); return ["https:", "http:"].includes(parsed.protocol) ? esc(parsed.href) : "#"; }
+  catch { return "#"; }
+}
+
+function evidenceHtml(item) {
+  const quality = item.text_quality || {};
+  const reasons = (item.editorial_reasons || []).map(r =>
+    `<li>${esc(r.label)}${r.evidence ? ` <small>(${esc(r.evidence)})</small>` : ""}</li>`).join("");
+  const refs = (item.source_references || []).map(r => `
+    <div class="source-reference">
+      <a href="${safeLink(r.url)}" target="_blank" rel="noopener noreferrer">Магчымая першакрыніца: ${esc(r.source)}</a>
+      <blockquote>${esc(r.evidence)}</blockquote>
+      <button class="expand-btn" data-act="collect-original" data-url="${esc(r.url)}">📥 Атрымаць артыкул</button>
+    </div>`).join("");
+  const linkedSources = new Set((item.source_references || []).map(r => (r.source || "").replace(/^www\./, "")));
+  const unlinked = (item.named_attributions || []).filter(r => !linkedSources.has(r.source)).map(r =>
+    `<div><b>Згаданае выданне: ${esc(r.source)}</b><blockquote>${esc(r.evidence)}</blockquote><small>Спасылка на артыкул не знойдзена; першакрыніца не пацверджана.</small></div>`).join("");
+  return `<div class="evidence" style="padding:10px 14px">
+    <div ${quality.needs_confirmation ? 'role="note" style="color:var(--danger)"' : ''}>${quality.needs_confirmation ? "⚠️" : "📄"} ${esc(quality.label)} · ${quality.characters ?? 0} знакаў</div>
+    <details><summary>Чаму такі прыярытэт?</summary><ul>${reasons}</ul><small>Гэта прыкметы, а не пацверджанне эксклюзіўнасці.</small></details>
+    ${refs}${unlinked}
+  </div>`;
+}
+
+function storyCardHtml(item) {
+  const related = item.related_items || [];
+  return `<section class="story" style="margin-bottom:18px">
+    ${related.length ? `<p style="color:var(--hint)">🗂 Адзін сюжэт · ${related.length + 1} матэрыялы. Прапанаваны артыкул:</p>` : ""}
+    ${rawCardHtml(item)}
+    ${related.length ? `<details><summary>Іншыя крыніцы і дадатковыя факты (${related.length})</summary>${related.map(rawCardHtml).join("")}</details>` : ""}
+  </section>`;
+}
+
 // --- raw-item card ----------------------------------------------------------
 
 function rawCardHtml(item) {
@@ -229,13 +263,14 @@ function rawCardHtml(item) {
   return `
   <div class="card" data-id="${item.id}">
     ${img}
-    <div class="preview"><div class="preview-collapsed" id="p-${item.id}">${esc(collapsed)}</div>${isLong ? '<button class="expand-btn" data-act="expand-preview" data-target="p-'+item.id+'" data-full="'+esc(full)+'" aria-expanded="false" aria-controls="p-'+item.id+'">📖 Паказаць цалкам</button>' : ''}</div>
+    <div class="preview"><div class="preview-collapsed" id="p-${item.id}">${esc(collapsed)}</div>${isLong ? '<button class="expand-btn" data-act="expand-preview" data-target="p-'+item.id+'" data-full="'+esc(full)+'" data-plain="true" aria-expanded="false" aria-controls="p-'+item.id+'">📖 Паказаць цалкам</button>' : ''}</div>
     <div class="meta">
       <span>📥 ${esc(item.source)}</span>
       <span>🎯 ${item.relevance_score.toFixed(2)}</span>
       <span title="Ацэнка крыніцы і прыкмет арыгінальнага матэрыялу; не пацвярджэнне эксклюзіўнасці">⭐ Прыярытэт: ${item.editorial_priority ?? 0}</span>
       <span>🌐 ${esc(item.original_language || "?")}</span>
     </div>
+    ${evidenceHtml(item)}
     <div class="row">
       <button class="action" data-act="translate">🌐 Перакласці</button>
       <button class="action danger ghost" data-act="reject" aria-label="Адхіліць" style="flex:0 0 44px">✕</button>
@@ -262,6 +297,7 @@ function processedCardHtml(item) {
       <span>🌐 ${esc(item.original_language || "?")}</span>
       ${usageLine ? `<span>${usageLine}</span>` : ""}
     </div>
+    ${evidenceHtml(item)}
     <button class="orig-toggle" data-act="toggle-original" aria-expanded="false" aria-controls="orig-${item.id}">📄 Арыгінал</button>
     <div class="orig-content" id="orig-${item.id}">
       <div><div class="orig-inner"><b>${esc(item.title)}</b>\n\n${esc(item.original_content || "")}</div></div>
@@ -292,13 +328,14 @@ function processedCardHtml(item) {
 
 // --- queue rendering ---------------------------------------------------------
 
+let rawPage = 0;
 let rawQueueData = null;
 let processedQueueData = null;
 
 function renderSubTabs() {
   return `
     <div class="sub-tabs" role="tablist">
-      <button class="sub-tab ${queueSubTab === "raw" ? "active" : ""}" data-subtab="raw" role="tab" aria-selected="${queueSubTab === "raw" ? "true" : "false"}">Новыя${rawQueueData ? ` (${rawQueueData.total})` : ""}</button>
+      <button class="sub-tab ${queueSubTab === "raw" ? "active" : ""}" data-subtab="raw" role="tab" aria-selected="${queueSubTab === "raw" ? "true" : "false"}">Новыя${rawQueueData ? ` (${rawQueueData.total} сюжэтаў)` : ""}</button>
       <button class="sub-tab ${queueSubTab === "processed" ? "active" : ""}" data-subtab="processed" role="tab" aria-selected="${queueSubTab === "processed" ? "true" : "false"}">На модэрацыі${processedQueueData ? ` (${processedQueueData.total})` : ""}</button>
     </div>`;
 }
@@ -306,10 +343,14 @@ function renderSubTabs() {
 async function renderQueue() {
   const el = document.getElementById("content");
   try {
-    const [rawData, processedData] = await Promise.all([
-      call("/queue/raw"),
+    let [rawData, processedData] = await Promise.all([
+      call(`/queue/raw?page=${rawPage}`),
       call("/queue"),
     ]);
+    if (!rawData.items.length && rawPage > 0) {
+      rawPage = Math.max(0, Math.ceil(rawData.total / rawData.page_size) - 1);
+      rawData = await call(`/queue/raw?page=${rawPage}`);
+    }
     rawQueueData = rawData;
     processedQueueData = processedData;
 
@@ -323,9 +364,14 @@ async function renderQueue() {
       if (!rawData.items.length) {
         html += `<div class="empty">Новых навін няма</div>`;
       } else {
-        html += `<div class="bulk-bar"><button class="pill-reject" data-act="reject-all-raw">✕ Выдаліць усе (${rawData.total})</button></div>`;
-        html += rawData.items.map(rawCardHtml).join("");
+        html += `<div class="bulk-bar"><button class="pill-reject" data-act="reject-all-raw">✕ Выдаліць усе (${rawData.total_articles ?? rawData.total})</button></div>`;
+        html += rawData.items.map(storyCardHtml).join("");
       }
+      html += `<div class="row">
+        <button class="action ghost" data-act="raw-prev" ${rawPage === 0 ? "disabled" : ""}>← Назад</button>
+        <span>${rawPage + 1} / ${Math.max(1, Math.ceil(rawData.total / rawData.page_size))}</span>
+        <button class="action ghost" data-act="raw-next" ${(rawPage + 1) * rawData.page_size >= rawData.total ? "disabled" : ""}>Далей →</button>
+      </div>`;
     } else {
       if (!processedData.items.length) {
         html += `<div class="empty">Чарга мадэрацыі пустая</div>`;
@@ -385,7 +431,7 @@ async function renderStats() {
 
 // --- action handlers ---------------------------------------------------------
 
-async function handleAction(id, act, card) {
+async function handleAction(id, act, card, actionButton) {
   const editor = card.querySelector(".editor");
 
   if (act === "edit") {
@@ -424,7 +470,19 @@ async function handleAction(id, act, card) {
     return;
   }
 
+  if (act === "collect-original") {
+    const updated = await call(`/items/${id}/collect-original`, {
+      method: "POST", body: JSON.stringify({ url: actionButton.dataset.url }),
+    });
+    toast(updated.status === "collected" ? "Артыкул дададзены ў сюжэт" : "Артыкул ужо апрацаваны");
+    await renderQueue();
+    return;
+  }
+
   if (act === "translate") {
+    const current = await call(`/items/${id}`);
+    const incomplete = current.text_quality?.needs_confirmation !== false;
+    if (incomplete && !confirm((current.text_quality?.label || "Паўната тэксту невядомая") + ". Перакласці толькі даступны тэкст?")) return;
     card.style.opacity = "1"; card.style.pointerEvents = "none";
     const stepLabels = {
       warmup: "⚙️ Загрузка мадэлі...",
@@ -444,7 +502,7 @@ async function handleAction(id, act, card) {
         </div>
       </div>`;
     try {
-      await call(`/items/${id}/translate`, { method: "POST" });
+      await call(`/items/${id}/translate?allow_incomplete=${incomplete}`, { method: "POST" });
       // Poll progress
       const stepOrder = ["warmup","translating","summary","polishing","analyzing","done"];
       let lastStep = "";
@@ -573,7 +631,8 @@ document.getElementById("content").addEventListener("click", async (e) => {
       if (target) {
         if (target.classList.contains("preview-collapsed")) {
           if (button.dataset.full) {
-            target.innerHTML = button.dataset.full;
+            if (button.dataset.plain === "true") target.textContent = button.dataset.full;
+            else target.innerHTML = button.dataset.full;
           }
           target.classList.remove("preview-collapsed");
           button.textContent = "📖 Схаваць";
@@ -586,17 +645,23 @@ document.getElementById("content").addEventListener("click", async (e) => {
       }
       return;
     }
+    if (button.dataset.act === "raw-prev" || button.dataset.act === "raw-next") {
+      rawPage = Math.max(0, rawPage + (button.dataset.act === "raw-next" ? 1 : -1));
+      await renderQueue();
+      return;
+    }
     button.disabled = true;
     if (button.dataset.act === "reject-all-raw") {
       if (!confirm("Выдаліць усе новыя навіны?")) return;
       const result = await call("/queue/raw/reject-all", { method: "POST" });
+      rawPage = 0;
       toast("Выдалена " + result.count);
       tg?.HapticFeedback?.notificationOccurred("warning");
       await renderQueue();
     } else {
       const card = button.closest(".card");
       if (!card) return;
-      await handleAction(card.dataset.id, button.dataset.act, card);
+      await handleAction(card.dataset.id, button.dataset.act, card, button);
     }
   }
   catch (err) { toast("Памылка: " + (err.message || err)); }

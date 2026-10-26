@@ -36,7 +36,7 @@ def test_exclusive_word_alone_does_not_raise_priority():
     assert editorial_priority(item("https://www.autosport.com.evil.test/x")) == 0
 
 
-async def test_dedup_happens_before_save_and_prefers_original(monkeypatch):
+async def test_url_dedup_preserves_publications_for_story_grouping(monkeypatch):
     collector = NewsCollector.__new__(NewsCollector)
     collector.collectors = {"rss": object(), "web": object()}
     copy = item("https://example.com/copy")
@@ -45,9 +45,14 @@ async def test_dedup_happens_before_save_and_prefers_original(monkeypatch):
     collector._collect_from_source = AsyncMock(side_effect=[[copy], [original, different]])
     save = AsyncMock(return_value="id")
     monkeypatch.setattr("src.collectors.news_collector.db_manager.save_news_item", save)
+    monkeypatch.setattr(
+        "src.collectors.news_collector.db_manager.get_story_candidates", AsyncMock(return_value=[])
+    )
     collected = await collector.collect_all_news()
-    assert [i.url for i in collected] == [original.url, different.url]
-    assert save.await_count == 2
+    assert [i.url for i in collected] == [original.url, copy.url, different.url]
+    assert original.story_id == copy.story_id
+    assert original.story_id != different.story_id
+    assert save.await_count == 3
 
 
 async def test_priority_is_applied_before_pagination_and_old_news_stays_below():
