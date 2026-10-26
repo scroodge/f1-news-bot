@@ -238,7 +238,12 @@ async def collect_original(item_id: str, request: CollectOriginalRequest):
                 status_code=422, detail="Не ўдалося атрымаць тэкст. Адкрыйце спасылку на выданне."
             )
         original.story_id = item.story_id
-        await db_manager.save_news_item(original)
+        # None means the unique URL constraint hit a row stored under a non-canonical
+        # spelling (saved before canonical_url existed), which the lookup above misses.
+        if await db_manager.save_news_item(original) is None:
+            raise HTTPException(
+                status_code=409, detail="Гэты артыкул ужо ёсць у базе пад іншай спасылкай."
+            )
         original = await db_manager.get_item_by_url(url)
     await db_manager.merge_stories(item_id, original.id)
     return _serialize(await db_manager.get_item(original.id))

@@ -195,6 +195,9 @@ class WebScraperCollector(BaseCollector):
 
         items: list[NewsItem] = []
         attempted = 0
+        # Only fetch/parse breakage counts against source health; short or non-F1
+        # articles are normal content and must not auto-disable a working source.
+        broken = 0
         if not links:
             health.record_failure("No article links matched the listing")
             return []
@@ -213,8 +216,10 @@ class WebScraperCollector(BaseCollector):
                 article = extract_article(article_response.text, url)
             except Exception as e:
                 logger.warning(f"[{source.name}] article fetch failed for {url}: {e}")
+                broken += 1
                 continue
             if article is None or not article["title"]:
+                broken += 1
                 continue
             if len(article["text"]) < MIN_ARTICLE_CHARS:
                 logger.debug(f"[{source.name}] skipping short extraction: {url}")
@@ -246,8 +251,8 @@ class WebScraperCollector(BaseCollector):
                 )
             )
 
-        if attempted and not items:
-            health.record_failure("No usable articles extracted from new URLs")
+        if attempted and broken == attempted:
+            health.record_failure("Every new article failed to fetch or parse")
         else:
             health.record_success()
         logger.info(f"[{source.name}] collected {len(items)} new articles")

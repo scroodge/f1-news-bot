@@ -38,6 +38,21 @@ class RSSCollector(BaseCollector):
         self.session = aiohttp.ClientSession(headers={"User-Agent": USER_AGENT})
         logger.info("RSS collector initialized")
 
+    async def _load_robots(self, host: str) -> robotparser.RobotFileParser | None | bool:
+        """Parsed rules; None when there is no robots.txt (4xx, allow all); False when
+        it is unreachable (5xx/network, disallow per RFC 9309). Cached per cycle."""
+        try:
+            async with self.session.get(f"https://{host}/robots.txt", timeout=15) as resp:
+                if resp.status == 200:
+                    parser = robotparser.RobotFileParser()
+                    parser.parse((await resp.text()).splitlines())
+                    return parser
+                if 400 <= resp.status < 500:
+                    return None
+        except Exception as e:
+            logger.debug(f"robots.txt fetch failed for {host}: {e}")
+        return False
+
     async def _fetch_full_text(self, url: str) -> str | None:
         """Try to fetch and extract full article text via trafilatura.
         Returns the extracted text, or None on failure."""
@@ -45,17 +60,9 @@ class RSSCollector(BaseCollector):
         try:
             host = urlsplit(url).netloc
             if host not in self._robots:
-                async with self.session.get(f"https://{host}/robots.txt", timeout=15) as resp:
-                    if resp.status == 200:
-                        parser = robotparser.RobotFileParser()
-                        parser.parse((await resp.text()).splitlines())
-                        self._robots[host] = parser
-                    elif resp.status == 404:
-                        self._robots[host] = None
-                    else:
-                        return None
+                self._robots[host] = await self._load_robots(host)
             parser = self._robots[host]
-            if parser is not None and not parser.can_fetch(USER_AGENT, url):
+            if parser is False or (parser is not None and not parser.can_fetch(USER_AGENT, url)):
                 return None
             await asyncio.sleep(ARTICLE_FETCH_DELAY_SECONDS)
             async with self.session.get(url, timeout=15) as resp:
@@ -80,6 +87,8 @@ class RSSCollector(BaseCollector):
             await self.initialize()
 
         all_news = []
+        # Re-read robots.txt each cycle so a transient outage doesn't block a host forever
+        self._robots = {}
 
         for feed_url in self.feeds:
             try:

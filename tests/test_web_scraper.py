@@ -114,3 +114,32 @@ async def test_listing_without_article_links_is_unhealthy():
     assert await collector._collect_from_source(source) == []
     assert collector.health["test"].error_streak == 1
     assert collector.health["test"].last_success is None
+
+
+def _scraper_with_article(article_html=None, error=None):
+    from unittest.mock import AsyncMock, Mock
+
+    source = ScrapeSource(name="test", list_url="https://x.example/news/", link_pattern="/news/")
+    collector = WebScraperCollector([source])
+    collector._allowed_by_robots = AsyncMock(return_value=True)
+    collector._url_known = AsyncMock(return_value=False)
+    listing = Mock(text='<html><a href="/news/some-article">A</a></html>', url=source.list_url)
+    article = Mock(text=article_html, raise_for_status=Mock(side_effect=error))
+    collector._client = Mock(get=AsyncMock(side_effect=[listing, article]))
+    return source, collector
+
+
+async def test_irrelevant_articles_do_not_count_as_source_failure(monkeypatch):
+    monkeypatch.setattr("src.collectors.web_scraper.ARTICLE_FETCH_DELAY_SECONDS", 0)
+    source, collector = _scraper_with_article(ARTICLE_HTML)
+    collector.calculate_relevance_score = lambda *_: 0
+    assert await collector._collect_from_source(source) == []
+    assert collector.health["test"].error_streak == 0
+    assert collector.health["test"].last_success is not None
+
+
+async def test_failed_article_fetches_count_as_source_failure(monkeypatch):
+    monkeypatch.setattr("src.collectors.web_scraper.ARTICLE_FETCH_DELAY_SECONDS", 0)
+    source, collector = _scraper_with_article(error=RuntimeError("503"))
+    assert await collector._collect_from_source(source) == []
+    assert collector.health["test"].error_streak == 1

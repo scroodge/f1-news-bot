@@ -325,3 +325,33 @@ async def test_legacy_metadata_is_unknown_and_null_story_ids_remain_visible(clie
     assert data["total"] == 1
     assert data["items"][0]["text_quality"]["status"] == "unknown"
     assert data["items"][0]["story_id"]
+
+
+async def test_original_saved_under_other_spelling_returns_conflict(client, monkeypatch):
+    from unittest.mock import AsyncMock
+
+    http, db = client
+    original_url = "https://www.the-race.com/formula-1/ferrari-exclusive-interview/"
+    copy_id = await seed_raw(
+        db,
+        "https://www.planetf1.com/news/copy-interview",
+        collection_info={"references": [{"url": original_url, "kind": "attribution"}]},
+    )
+    fetched = NewsItem(
+        title="Ferrari exclusive interview",
+        content="Original content " * 100,
+        url=original_url,
+        source="The Race",
+        source_type=SourceType.WEB,
+        published_at=datetime.utcnow(),
+    )
+    monkeypatch.setattr(
+        "src.collectors.web_scraper.WebScraperCollector.fetch_reference",
+        AsyncMock(return_value=fetched),
+    )
+    # Simulates the unique-URL conflict with a legacy non-canonical row
+    monkeypatch.setattr(db, "save_news_item", AsyncMock(return_value=None))
+    response = await http.post(
+        f"/admin/api/items/{copy_id}/collect-original", json={"url": original_url}
+    )
+    assert response.status_code == 409

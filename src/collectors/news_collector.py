@@ -60,8 +60,13 @@ class NewsCollector:
         unique_news = self._remove_duplicates(
             sorted(all_news, key=editorial_priority, reverse=True)
         )
-        recent = await db_manager.get_story_candidates()
-        assign_stories(unique_news, recent)
+        # Grouping is optional: a failure here must not drop the whole cycle's items
+        # (save_news_item assigns a fresh story_id when none was set).
+        try:
+            recent = await db_manager.get_story_candidates()
+            await asyncio.to_thread(assign_stories, unique_news, recent)
+        except Exception:
+            logger.exception("Story grouping failed; saving items ungrouped")
         for item in unique_news:
             try:
                 await db_manager.save_news_item(item)

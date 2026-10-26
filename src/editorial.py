@@ -54,8 +54,10 @@ def editorial_priority_sql(model):
     text = func.lower(model.title + " " + model.content)
     source = case(
         *[
-            (url.like(f"https://{prefix}{host}/%"), priority)
+            # Same hosts as editorial_priority(), which ignores the scheme
+            (url.like(f"{scheme}://{prefix}{host}/%"), priority)
             for host, priority in SOURCE_PRIORITIES.items()
+            for scheme in ("https", "http")
             for prefix in ("", "www.")
         ],
         else_=0,

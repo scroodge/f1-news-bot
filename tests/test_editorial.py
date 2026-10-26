@@ -92,3 +92,35 @@ async def test_priority_is_applied_before_pagination_and_old_news_stays_below():
                 assert sql_score == editorial_priority(row)
     finally:
         await db.close()
+
+
+async def test_sql_priority_matches_python_for_http_urls():
+    from sqlalchemy import select
+
+    from src.database import NewsItemDB
+
+    db = DatabaseManager("sqlite+aiosqlite://")
+    await db.create_tables()
+    try:
+        await db.save_news_item(item("http://www.autosport.com/f1/news/plain/", "Plain http"))
+        async with db.session() as session:
+            row, sql_score = (
+                await session.execute(select(NewsItemDB, editorial_priority_sql(NewsItemDB)))
+            ).one()
+        assert sql_score == editorial_priority(row) == 4
+    finally:
+        await db.close()
+
+
+async def test_story_grouping_failure_still_saves_items(monkeypatch):
+    collector = NewsCollector.__new__(NewsCollector)
+    collector.collectors = {"rss": object()}
+    collector._collect_from_source = AsyncMock(return_value=[item("https://example.com/a")])
+    save = AsyncMock(return_value="id")
+    monkeypatch.setattr("src.collectors.news_collector.db_manager.save_news_item", save)
+    monkeypatch.setattr(
+        "src.collectors.news_collector.db_manager.get_story_candidates",
+        AsyncMock(side_effect=RuntimeError("db down")),
+    )
+    await collector.collect_all_news()
+    assert save.await_count == 1
