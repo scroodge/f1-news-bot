@@ -18,6 +18,10 @@
     --radius-sm: 10px;
   }
   * { box-sizing: border-box; margin: 0; }
+  :focus-visible {
+    outline: 2px solid var(--btn);
+    outline-offset: 2px;
+  }
   body {
     background: var(--bg); color: var(--fg);
     font: -apple-system, system-ui, Roboto, sans-serif;
@@ -84,6 +88,10 @@
   }
   button.action:active { transform: scale(.96); }
   button.action:disabled { opacity: .4; transform: none; }
+  button:focus-visible, input:focus-visible, textarea:focus-visible {
+    outline: 2px solid var(--btn);
+    outline-offset: 2px;
+  }
   button.ghost { background: var(--bg); color: var(--fg); border: 1px solid color-mix(in srgb, var(--fg) 15%, transparent); font-weight: 500; }
   button.ghost:active { background: color-mix(in srgb, var(--fg) 6%, transparent); }
   button.danger { background: #e74c3c; color: #fff; }
@@ -167,10 +175,10 @@
     <h1>F1 News</h1>
     <span class="head-badge">мадэрацыя</span>
   </div>
-  <div class="tabs">
-    <button class="tab active" data-tab="queue">Чарга <span id="queue-count"></span></button>
-    <button class="tab" data-tab="published">Гісторыя</button>
-    <button class="tab" data-tab="stats">Статыстыка</button>
+  <div class="tabs" role="tablist">
+    <button class="tab active" data-tab="queue" role="tab" aria-selected="true">Чарга <span id="queue-count"></span></button>
+    <button class="tab" data-tab="published" role="tab" aria-selected="false">Гісторыя</button>
+    <button class="tab" data-tab="stats" role="tab" aria-selected="false">Статыстыка</button>
   </div>
 </header>
 <main id="content"><div class="empty">Загрузка…</div></main>
@@ -218,7 +226,7 @@ function rawCardHtml(item) {
   return `
   <div class="card" data-id="${item.id}">
     ${img}
-    <div class="preview"><div class="preview-collapsed" id="p-${item.id}">${esc(collapsed)}</div>${isLong ? '<button class="expand-btn" data-act="expand-preview" data-target="p-'+item.id+'" data-full="'+esc(full)+'">📖 Паказаць цалкам</button>' : ''}</div>
+    <div class="preview"><div class="preview-collapsed" id="p-${item.id}">${esc(collapsed)}</div>${isLong ? '<button class="expand-btn" data-act="expand-preview" data-target="p-'+item.id+'" data-full="'+esc(full)+'" aria-expanded="false">📖 Паказаць цалкам</button>' : ''}</div>
     <div class="meta">
       <span>📥 ${esc(item.source)}</span>
       <span>🎯 ${item.relevance_score.toFixed(2)}</span>
@@ -242,7 +250,7 @@ function processedCardHtml(item) {
   return `
   <div class="card" data-id="${item.id}">
     ${img}
-    <div class="preview"><div class="preview-collapsed" id="pp-${item.id}">${esc(item.preview)}</div><button class="expand-btn" data-act="expand-preview" data-target="pp-${item.id}" data-full="${esc(item.summary || item.preview)}">📖 Паказаць цалкам</button></div>
+    <div class="preview"><div class="preview-collapsed" id="pp-${item.id}">${esc(item.preview)}</div><button class="expand-btn" data-act="expand-preview" data-target="pp-${item.id}" data-full="${esc(item.summary || item.preview)}" aria-expanded="false">📖 Паказаць цалкам</button></div>
     <div class="meta">
       <span>📥 ${esc(item.source)}</span>
       <span>⭐ ${item.importance_level}/5</span>
@@ -250,23 +258,23 @@ function processedCardHtml(item) {
       <span>🌐 ${esc(item.original_language || "?")}</span>
       ${usageLine ? `<span>${usageLine}</span>` : ""}
     </div>
-    <button class="orig-toggle" data-act="toggle-original">📄 Арыгінал</button>
+    <button class="orig-toggle" data-act="toggle-original" aria-expanded="false" aria-controls="orig-${item.id}">📄 Арыгінал</button>
     <div class="orig-content" id="orig-${item.id}">
       <div><div class="orig-inner"><b>${esc(item.title)}</b>\n\n${esc(item.original_content || "")}</div></div>
     </div>
     <div class="editor" id="edit-${item.id}">
-      <label>Загаловак</label>
-      <input name="title_be" value="${esc(item.title_be || "")}">
-      <label>Тэкст</label>
-      <textarea name="summary">${esc(item.summary || "")}</textarea>
-      <label>Галоўнае (радок на пункт)</label>
-      <textarea name="key_points" rows="3">${esc((item.key_points || []).join("\n"))}</textarea>
-      <label>Тэгі (праз коску)</label>
-      <input name="tags" value="${esc((item.tags || []).join(", "))}">
+      <label for="inp-title-${item.id}">Загаловак</label>
+      <input id="inp-title-${item.id}" name="title_be" value="${esc(item.title_be || "")}">
+      <label for="inp-summary-${item.id}">Тэкст</label>
+      <textarea id="inp-summary-${item.id}" name="summary">${esc(item.summary || "")}</textarea>
+      <label for="inp-kp-${item.id}">Галоўнае (радок на пункт)</label>
+      <textarea id="inp-kp-${item.id}" name="key_points" rows="3">${esc((item.key_points || []).join("\n"))}</textarea>
+      <label for="inp-tags-${item.id}">Тэгі (праз коску)</label>
+      <input id="inp-tags-${item.id}" name="tags" value="${esc((item.tags || []).join(", "))}">
       <div class="row">
         <button class="action" data-act="save">Захаваць</button>
         <button class="action ghost" data-act="generate-keypoints">🔑 Галоўнае</button>
-        <button class="action ghost" data-act="cancel" style="flex:0 0 60px">Скасаваць</button>
+        <button class="action ghost" data-act="cancel" aria-label="Скасаваць" style="flex:0 0 60px">Скасаваць</button>
       </div>
     </div>
     <div class="row">
@@ -285,9 +293,9 @@ let processedQueueData = null;
 
 function renderSubTabs() {
   return `
-    <div class="sub-tabs">
-      <button class="sub-tab ${queueSubTab === "raw" ? "active" : ""}" data-subtab="raw">Новыя${rawQueueData ? ` (${rawQueueData.total})` : ""}</button>
-      <button class="sub-tab ${queueSubTab === "processed" ? "active" : ""}" data-subtab="processed">На модэрацыі${processedQueueData ? ` (${processedQueueData.total})` : ""}</button>
+    <div class="sub-tabs" role="tablist">
+      <button class="sub-tab ${queueSubTab === "raw" ? "active" : ""}" data-subtab="raw" role="tab" aria-selected="${queueSubTab === "raw"}">Новыя${rawQueueData ? ` (${rawQueueData.total})` : ""}</button>
+      <button class="sub-tab ${queueSubTab === "processed" ? "active" : ""}" data-subtab="processed" role="tab" aria-selected="${queueSubTab === "processed"}">На модэрацыі${processedQueueData ? ` (${processedQueueData.total})` : ""}</button>
     </div>`;
 }
 
@@ -344,7 +352,7 @@ async function renderPublished() {
   }
   el.innerHTML = data.items.map(i => `
     <div class="card" style="opacity:.85">
-      <div class="preview"><div class="preview-collapsed" id="ph-${i.id}">${esc(i.preview)}</div><button class="expand-btn" data-act="expand-preview" data-target="ph-${i.id}" data-full="${esc(i.summary || i.preview)}">📖 Паказаць цалкам</button></div>
+      <div class="preview"><div class="preview-collapsed" id="ph-${i.id}">${esc(i.preview)}</div><button class="expand-btn" data-act="expand-preview" data-target="ph-${i.id}" data-full="${esc(i.summary || i.preview)}" aria-expanded="false">📖 Паказаць цалкам</button></div>
       <div class="meta">
         <span>📥 ${esc(i.source)}</span>
         <span>⭐ ${i.importance_level}/5</span>
@@ -377,8 +385,9 @@ async function handleAction(id, act, card) {
   const editor = card.querySelector(".editor");
 
   if (act === "edit") {
-    editor.classList.toggle("open");
-    editingId = editor.classList.contains("open") ? id : null;
+    const isOpen = editor.classList.toggle("open");
+    card.querySelector('button[data-act="edit"]')?.setAttribute("aria-expanded", isOpen ? "true" : "false");
+    editingId = isOpen ? id : null;
     return;
   }
   if (act === "cancel") {
@@ -521,7 +530,11 @@ const renderers = { queue: renderQueue, published: renderPublished, stats: rende
 
 async function show(tab) {
   activeTab = tab;
-  document.querySelectorAll(".tab").forEach(t => t.classList.toggle("active", t.dataset.tab === tab));
+  document.querySelectorAll(".tab").forEach(t => {
+    const isActive = t.dataset.tab === tab;
+    t.classList.toggle("active", isActive);
+    t.setAttribute("aria-selected", isActive ? "true" : "false");
+  });
   document.getElementById("content").innerHTML = `<div class="empty">Загрузка…</div>`;
   try { await renderers[tab](); }
   catch (e) { document.getElementById("content").innerHTML = `<div class="empty">Памылка: ${esc(e.message || e)}</div>`; }
@@ -546,7 +559,10 @@ document.getElementById("content").addEventListener("click", async (e) => {
   try {
     if (button.dataset.act === "toggle-original") {
       const content = button.nextElementSibling;
-      if (content) content.classList.toggle("open");
+      if (content) {
+        const isOpen = content.classList.toggle("open");
+        button.setAttribute("aria-expanded", isOpen ? "true" : "false");
+      }
       return;
     }
     if (button.dataset.act === "expand-preview") {
@@ -558,9 +574,11 @@ document.getElementById("content").addEventListener("click", async (e) => {
           }
           target.classList.remove("preview-collapsed");
           button.textContent = "📖 Схаваць";
+          button.setAttribute("aria-expanded", "true");
         } else {
           target.classList.add("preview-collapsed");
           button.textContent = "📖 Паказаць цалкам";
+          button.setAttribute("aria-expanded", "false");
         }
       }
       return;

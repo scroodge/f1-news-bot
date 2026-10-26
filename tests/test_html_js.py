@@ -54,3 +54,12 @@ def test_js_async_handlers():
 def test_html_has_translate_button():
     html = INDEX_HTML.read_text(encoding="utf-8")
     assert "Перакласці" in html or "translate" in html
+
+
+def test_html_accessibility():
+    html = INDEX_HTML.read_text(encoding="utf-8")
+    assert 'aria-label="Адхіліць"' in html
+    assert 'aria-label="Рэдагаваць"' in html
+    assert 'for="edit-title-${item.id}"' in html
+    assert "aria-expanded=" in html
+    assert ":focus-visible" in html
