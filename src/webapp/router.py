@@ -12,11 +12,12 @@ from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import FileResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from ..config import settings
 from ..database import db_manager
 from ..editorial import canonical_url, editorial_priority, editorial_reasons
+from ..editorial_learning import POLICY_VERSION, REASON_LABELS, shadow_recommendation
 from ..models import NewsItem, NewsStatus, ProcessedNewsItem
 from ..provenance import article_url, named_attributions, quality_info
 from ..stories import representative
@@ -77,6 +78,7 @@ def _serialize(item: ProcessedNewsItem | NewsItem, with_preview: bool = True) ->
         "source_references": (item.collection_info or {}).get("references", []),
         "named_attributions": named_attributions(item.content, item.url),
         "story_id": item.story_id,
+        "shadow": shadow_recommendation(item),
         "importance_level": item.importance_level if is_processed else 1,
         "sentiment": item.sentiment if is_processed else "neutral",
         "original_language": item.original_language if is_processed else None,
@@ -102,7 +104,27 @@ def _serialize(item: ProcessedNewsItem | NewsItem, with_preview: bool = True) ->
     return data
 
 
-class EditRequest(BaseModel):
+def _editorial_actor(admin: dict) -> dict:
+    return {
+        "kind": "human" if admin.get("id") else "demo",
+        "id": str(admin.get("id", "")),
+        "interface": "miniapp",
+    }
+
+
+class FeedbackRequest(BaseModel):
+    reason_code: str = "unspecified"
+    note: str | None = Field(default=None, max_length=1000)
+
+    @field_validator("reason_code")
+    @classmethod
+    def validate_reason(cls, value):
+        if value not in REASON_LABELS:
+            raise ValueError("Невядомая прычына рашэння")
+        return value
+
+
+class EditRequest(FeedbackRequest):
     title_be: str | None = Field(default=None, max_length=300)
     summary: str | None = Field(default=None, max_length=8000)
     key_points: list[str] | None = None
@@ -136,23 +158,37 @@ async def get_item(item_id: str):
 
 
 @api.post("/items/{item_id}/approve")
-async def approve_item(item_id: str):
-    if not await db_manager.approve(item_id):
+async def approve_item(
+    item_id: str, feedback: FeedbackRequest | None = None, admin: dict = Depends(require_admin)
+):
+    feedback = feedback or FeedbackRequest()
+    if not await db_manager.approve(
+        item_id, actor=_editorial_actor(admin), reason_code=feedback.reason_code, note=feedback.note
+    ):
         raise HTTPException(status_code=409, detail="Item is not awaiting moderation")
     logger.info(f"Mini App: approved {item_id}")
     return {"ok": True, "status": NewsStatus.QUEUED.value}
 
 
 @api.post("/items/{item_id}/reject")
-async def reject_item(item_id: str):
-    if not await db_manager.reject(item_id, reason="rejected by admin (mini app)"):
+async def reject_item(
+    item_id: str, feedback: FeedbackRequest | None = None, admin: dict = Depends(require_admin)
+):
+    feedback = feedback or FeedbackRequest()
+    if not await db_manager.reject(
+        item_id,
+        reason="rejected by admin (mini app)",
+        actor=_editorial_actor(admin),
+        reason_code=feedback.reason_code,
+        note=feedback.note,
+    ):
         raise HTTPException(status_code=409, detail="Item cannot be rejected")
     logger.info(f"Mini App: rejected {item_id}")
     return {"ok": True, "status": NewsStatus.REJECTED.value}
 
 
 @api.post("/items/{item_id}/edit")
-async def edit_item(item_id: str, edit: EditRequest):
+async def edit_item(item_id: str, edit: EditRequest, admin: dict = Depends(require_admin)):
     fields: dict = {}
     if edit.title_be is not None:
         fields["translated_title"] = edit.title_be.strip()
@@ -168,7 +204,13 @@ async def edit_item(item_id: str, edit: EditRequest):
     if not fields:
         raise HTTPException(status_code=400, detail="Nothing to edit")
 
-    if not await db_manager.update_fields(item_id, **fields):
+    if not await db_manager.update_fields(
+        item_id,
+        editorial_actor=_editorial_actor(admin),
+        feedback_reason=edit.reason_code,
+        feedback_note=edit.note,
+        **fields,
+    ):
         raise HTTPException(status_code=404, detail="Item not found")
 
     item = await db_manager.get_item(item_id)
@@ -199,8 +241,8 @@ async def get_raw_queue(page: int = Query(0, ge=0), page_size: int = Query(10, g
 
 
 @api.post("/queue/raw/reject-all")
-async def reject_all_raw():
-    count = await db_manager.reject_all_collected()
+async def reject_all_raw(admin: dict = Depends(require_admin)):
+    count = await db_manager.reject_all_collected(actor=_editorial_actor(admin))
     logger.info(f"Mini App: bulk-rejected {count} collected items")
     return {"ok": True, "count": count}
 
@@ -250,7 +292,12 @@ async def collect_original(item_id: str, request: CollectOriginalRequest):
 
 
 @api.post("/items/{item_id}/translate")
-async def translate_item(item_id: str, allow_incomplete: bool = False):
+async def translate_item(
+    item_id: str,
+    allow_incomplete: bool = False,
+    feedback: FeedbackRequest | None = None,
+    admin: dict = Depends(require_admin),
+):
     item = await db_manager.get_item(item_id)
     if item is None:
         raise HTTPException(status_code=404, detail="Item not found")
@@ -263,6 +310,15 @@ async def translate_item(item_id: str, allow_incomplete: bool = False):
         raise HTTPException(
             status_code=409, detail=quality["label"] + ". Пацвердзіце пераклад даступнага тэксту."
         )
+    feedback = feedback or FeedbackRequest()
+    if not await db_manager.record_editorial_action(
+        item_id,
+        "translation_requested",
+        actor=_editorial_actor(admin),
+        reason_code=feedback.reason_code,
+        note=feedback.note,
+    ):
+        raise HTTPException(status_code=409, detail="Статус навіны ўжо змяніўся")
     processor = await get_content_processor()
     # Run translation in background, return immediately
     asyncio.create_task(_run_translate(item_id, processor))
@@ -295,12 +351,15 @@ async def translate_progress(item_id: str):
 
 
 @api.post("/items/{item_id}/generate-keypoints")
-async def generate_keypoints(item_id: str):
+async def generate_keypoints(item_id: str, admin: dict = Depends(require_admin)):
     item = await db_manager.get_item(item_id)
     if item is None:
         raise HTTPException(status_code=404, detail="Item not found")
     if item.status != NewsStatus.PROCESSED:
         raise HTTPException(status_code=409, detail="Item must be translated first")
+    await db_manager.record_editorial_action(
+        item_id, "keypoints_requested", actor=_editorial_actor(admin)
+    )
     processor = await get_content_processor()
     ok = await processor.generate_keypoints(item_id)
     if not ok:
@@ -336,4 +395,27 @@ async def get_stats():
         "queued": await db_manager.count_by_status(NewsStatus.QUEUED),
         "published_last_hour": await db_manager.published_in_last_hour(),
         "max_posts_per_hour": settings.max_posts_per_hour,
+    }
+
+
+@api.get("/items/{item_id}/history")
+async def editorial_history(item_id: str, limit: int = Query(20, ge=1, le=50)):
+    from uuid import UUID
+
+    try:
+        UUID(item_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail="Навіна не знойдзена") from exc
+    return {"events": await db_manager.get_editorial_history(item_id, limit=limit)}
+
+
+@api.get("/editorial/summary")
+async def editorial_summary():
+    return {
+        **await db_manager.get_editorial_summary(),
+        "mode": "shadow",
+        "engine": "rules",
+        "policy_version": POLICY_VERSION,
+        "automatic_actions": False,
+        "reason_options": [{"code": code, "label": label} for code, label in REASON_LABELS.items()],
     }

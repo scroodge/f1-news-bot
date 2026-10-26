@@ -97,7 +97,9 @@ async def _approve(query, item_id: str):
     if item is None:
         await _safe_edit(query, "❌ Новость не найдена", reply_markup=_BACK_TO_QUEUE)
         return
-    if await db_manager.approve(item_id):
+    if await db_manager.approve(
+        item_id, actor={"kind": "human", "id": str(query.from_user.id), "interface": "telegram"}
+    ):
         await _safe_edit(
             query,
             f"✅ Одобрено: {item.title[:80]}\n\n"
@@ -117,7 +119,11 @@ async def _reject(query, item_id: str):
     if item is None:
         await _safe_edit(query, "❌ Новость не найдена", reply_markup=_BACK_TO_QUEUE)
         return
-    if await db_manager.reject(item_id, reason="rejected by admin"):
+    if await db_manager.reject(
+        item_id,
+        reason="rejected by admin",
+        actor={"kind": "human", "id": str(query.from_user.id), "interface": "telegram"},
+    ):
         await _safe_edit(query, f"❌ Отклонено: {item.title[:80]}", reply_markup=_BACK_TO_QUEUE)
     else:
         await _safe_edit(query, "❌ Не удалось отклонить", reply_markup=_BACK_TO_QUEUE)
@@ -155,7 +161,9 @@ async def _reject_all_confirm(query):
 
 
 async def _reject_all(query):
-    count = await db_manager.reject_all_pending()
+    count = await db_manager.reject_all_pending(
+        actor={"kind": "human", "id": str(query.from_user.id), "interface": "telegram"}
+    )
     await _safe_edit(query, f"🗑 Отклонено {count} новостей.", reply_markup=_BACK_TO_QUEUE)
 
 

@@ -355,3 +355,70 @@ async def test_original_saved_under_other_spelling_returns_conflict(client, monk
         f"/admin/api/items/{copy_id}/collect-original", json={"url": original_url}
     )
     assert response.status_code == 409
+
+
+async def test_editorial_feedback_uses_authenticated_actor_and_records_reason(client):
+    http, db = client
+    item_id = await seed_processed(db)
+    response = await http.post(
+        f"/admin/api/items/{item_id}/edit",
+        json={
+            "summary": "Праўлены тэкст.",
+            "reason_code": "factual_error",
+            "note": "Удакладнены факт",
+            "actor": {"id": "attacker", "kind": "human"},
+        },
+    )
+    assert response.status_code == 200
+    history = (await http.get(f"/admin/api/items/{item_id}/history")).json()["events"]
+    event = history[0]
+    assert event["kind"] == "edited"
+    assert event["actor"]["id"] == "1"
+    assert event["actor"]["kind"] == "human"
+    assert event["reason_code"] == "factual_error"
+    assert event["before"]["translated_summary"] != event["after"]["translated_summary"]
+    assert event["training_eligible"] is True
+    assert event["versions"]["policy_version"] == response.json()["shadow"]["policy_version"]
+    assert response.json()["shadow"]["automatic_actions"] is False
+
+
+async def test_invalid_feedback_reason_never_changes_status_or_history(client):
+    http, db = client
+    item_id = await seed_processed(db)
+    before = await db.get_editorial_history(item_id)
+    response = await http.post(
+        f"/admin/api/items/{item_id}/reject", json={"reason_code": "made_up"}
+    )
+    assert response.status_code == 422
+    assert (await db.get_item(item_id)).status == NewsStatus.PROCESSED
+    assert await db.get_editorial_history(item_id) == before
+    assert (
+        await http.post(f"/admin/api/items/{item_id}/reject", json={"reason_code": "unverified"})
+    ).status_code == 200
+    latest = (await db.get_editorial_history(item_id))[0]
+    assert latest["reason_code"] == "unverified"
+    assert latest["recommendation"]["publication"] == "human_review"
+
+
+async def test_learning_summary_counts_eligible_human_feedback_and_never_enables_actions(client):
+    http, db = client
+    item_id = await seed_processed(db)
+    await http.post(f"/admin/api/items/{item_id}/approve", json={"reason_code": "interesting"})
+    summary = (await http.get("/admin/api/editorial/summary")).json()
+    assert summary["eligible_events"] == 1
+    assert summary["eligible_stories"] == 1
+    assert summary["by_reason"] == {"interesting": 1}
+    assert summary["mode"] == "shadow"
+    assert summary["automatic_actions"] is False
+    assert summary["reason_options"]
+
+
+async def test_incomplete_translation_block_does_not_create_selection_feedback(client):
+    http, db = client
+    item_id = await seed_raw(
+        db, "https://example.com/another-teaser", collection_info={"text_quality": "teaser"}
+    )
+    before = await db.get_editorial_history(item_id)
+    response = await http.post(f"/admin/api/items/{item_id}/translate")
+    assert response.status_code == 409
+    assert await db.get_editorial_history(item_id) == before

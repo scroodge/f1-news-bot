@@ -113,7 +113,11 @@ class ContentProcessor:
         if match is None:
             return False
         dup_id, score = match
-        await db_manager.reject(news_item.id, reason=f"duplicate of {dup_id} (cosine {score:.2f})")
+        await db_manager.reject(
+            news_item.id,
+            reason=f"duplicate of {dup_id} (cosine {score:.2f})",
+            reason_code="duplicate",
+        )
         logger.info(f"Rejected duplicate ({score:.2f}): {news_item.title[:60]}...")
         return True
 
@@ -255,7 +259,10 @@ class ContentProcessor:
             backend = self._get_claude()
             key_points = await backend.generate_key_points(title_be, summary_be)
             await db_manager.update_fields(
-                item_id, key_points=key_points, llm_usage=backend.last_usage
+                item_id,
+                key_points=key_points,
+                llm_usage=backend.last_usage,
+                event_type="keypoints_generated",
             )
             logger.info(f"Key points generated for {title_be[:60]}...")
             return True

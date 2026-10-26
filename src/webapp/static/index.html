@@ -14,6 +14,8 @@
     --btn: var(--tg-theme-button-color, #2481cc);
     --btn-fg: var(--tg-theme-button-text-color, #ffffff);
     --card: var(--tg-theme-secondary-bg-color, #f2f2f7);
+    --border: color-mix(in srgb, var(--fg) 12%, transparent);
+    --danger: #c0392b;
     --radius: 14px;
     --radius-sm: 10px;
   }
@@ -99,6 +101,9 @@
   button.pill { border-radius: 20px; padding: 8px 16px; flex: 0 1 auto; font-size: 12px; }
   .editor { display: none; gap: 8px; padding-top: 4px; }
   .editor.open { display: grid; }
+  .feedback-controls label { display: block; margin-top: 8px; color: var(--fg); font-size: 12px; }
+  .feedback-controls select, .feedback-controls input { display: block; width: 100%; margin-top: 4px; padding: 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); color: var(--fg); font: inherit; }
+  .feedback-controls select:focus-visible { outline: 2px solid var(--btn); outline-offset: 2px; }
   .editor label { font-size: 11px; font-weight: 600; color: var(--hint); text-transform: uppercase; letter-spacing: .4px; }
   .editor input, .editor textarea {
     width: 100%; padding: 12px; border-radius: var(--radius-sm); border: 1px solid color-mix(in srgb, var(--fg) 12%, transparent);
@@ -181,6 +186,7 @@
   <div class="tabs" role="tablist">
     <button class="tab active" data-tab="queue" role="tab" aria-selected="true">Чарга <span id="queue-count"></span></button>
     <button class="tab" data-tab="published" role="tab" aria-selected="false">Гісторыя</button>
+    <button class="tab" data-tab="learning" role="tab" aria-selected="false">Навучанне</button>
     <button class="tab" data-tab="stats" role="tab" aria-selected="false">Статыстыка</button>
   </div>
 </header>
@@ -218,6 +224,50 @@ async function call(path, options = {}) {
 
 const esc = (s) => (s || "").replace(/[&<>"]/g, c => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;" }[c]));
 
+let feedbackReasons = [];
+function feedbackControls(editing = false) {
+  const prefix = editing ? "edit-feedback" : "feedback";
+  const options = feedbackReasons.length ? feedbackReasons : [{code:"unspecified", label:"Прычына не пазначана"}];
+  return `<details class="feedback-controls" style="padding:8px 14px"><summary>${editing ? "Прычына праўкі" : "Прычына рашэння"} · для навучання</summary>
+    <label>Прычына <select data-${prefix}-reason aria-label="Прычына для навучання">${options.map(r => `<option value="${esc(r.code)}">${esc(r.label)}</option>`).join("")}</select></label>
+    <label>Каментар (неабавязкова) <input data-${prefix}-note maxlength="1000" aria-label="Каментар да рашэння"></label>
+  </details>`;
+}
+function feedbackPayload(card, editing = false) {
+  const prefix = editing ? "edit-feedback" : "feedback";
+  return {reason_code: card.querySelector(`[data-${prefix}-reason]`)?.value || "unspecified",
+          note: card.querySelector(`[data-${prefix}-note]`)?.value?.trim() || null};
+}
+function editorPayload(card) {
+  const editor = card.querySelector(".editor");
+  return {...feedbackPayload(card, true),
+    title_be: editor.querySelector('[name="title_be"]').value,
+    summary: editor.querySelector('[name="summary"]').value,
+    key_points: editor.querySelector('[name="key_points"]').value.split("\n").map(t => t.trim()).filter(Boolean),
+    tags: editor.querySelector('[name="tags"]').value.split(",").map(t => t.trim()).filter(Boolean)};
+}
+function shadowHtml(item) {
+  const shadow = item.shadow;
+  if (!shadow) return "";
+  const labels = {translate:"Прапанаваў бы пераклад", skip:"Прапанаваў бы прапусціць", human_review:"Патрэбны рэдактар"};
+  return `<details style="margin-top:8px"><summary>🧪 Тэневы рэдактар: ${labels[shadow.selection] || "Патрэбны рэдактар"}</summary>
+    <ul>${(shadow.reasons || []).map(r => `<li>${esc(r)}</li>`).join("")}</ul>
+    <small>Правілы ${esc(shadow.policy_version)}. Мадэль яшчэ не навучана. Публікацыю вырашае чалавек.</small>
+  </details>`;
+}
+function historyHtml(events) {
+  const labels = {collected:"Арыгінал захаваны", draft_generated:"Чарнавік згенераваны", edited:"Праўка рэдактара", approved:"Ухвалена", rejected:"Адхілена", bulk_rejected:"Масава адхілена", translation_requested:"Выбрана для перакладу", keypoints_requested:"Запыт ключавых пунктаў", keypoints_generated:"Ключавыя пункты згенераваны", system_updated:"Сістэмнае абнаўленне"};
+  return events.length ? events.map(event => {
+    const reason = feedbackReasons.find(r => r.code === event.reason_code)?.label || event.reason_code;
+    const changes = Object.entries(event.changes || {}).map(([field, change]) => `<details><summary>${esc(field)}</summary><pre style="white-space:pre-wrap;overflow-wrap:anywhere">${esc(change.diff || JSON.stringify(change, null, 2))}</pre></details>`).join("");
+    return `<article style="padding:10px;border-top:1px solid var(--border)"><b>${esc(labels[event.kind] || event.kind)}</b>
+      <div>${esc(event.created_at)} · ${esc(event.actor.kind)} · ${esc(reason)}</div>
+      ${event.note ? `<p>${esc(event.note)}</p>` : ""}
+      <small>${event.training_eligible ? "Прыклад для разгляду пры навучанні" : "Аўдыт; не навучальны прыклад"}</small>
+      ${changes}<small>Версія: ${esc(event.versions.policy_version)} · Крыніца: ${esc(event.source_hash.slice(0, 12))}</small></article>`;
+  }).join("") : "Пакуль няма запісаў. Гісторыя збіраецца пасля абнаўлення.";
+}
+
 function safeLink(url) {
   try { const parsed = new URL(url); return ["https:", "http:"].includes(parsed.protocol) ? esc(parsed.href) : "#"; }
   catch { return "#"; }
@@ -239,7 +289,9 @@ function evidenceHtml(item) {
   return `<div class="evidence" style="padding:10px 14px">
     <div ${quality.needs_confirmation ? 'role="note" style="color:var(--danger)"' : ''}>${quality.needs_confirmation ? "⚠️" : "📄"} ${esc(quality.label)} · ${quality.characters ?? 0} знакаў</div>
     <details><summary>Чаму такі прыярытэт?</summary><ul>${reasons}</ul><small>Гэта прыкметы, а не пацверджанне эксклюзіўнасці.</small></details>
-    ${refs}${unlinked}
+    ${refs}${unlinked}${shadowHtml(item)}
+    <button class="expand-btn" data-act="history">🕘 Гісторыя рашэнняў і правак</button>
+    <div class="history-panel" hidden></div>
   </div>`;
 }
 
@@ -271,6 +323,7 @@ function rawCardHtml(item) {
       <span>🌐 ${esc(item.original_language || "?")}</span>
     </div>
     ${evidenceHtml(item)}
+    ${feedbackControls()}
     <div class="row">
       <button class="action" data-act="translate">🌐 Перакласці</button>
       <button class="action danger ghost" data-act="reject" aria-label="Адхіліць" style="flex:0 0 44px">✕</button>
@@ -311,12 +364,14 @@ function processedCardHtml(item) {
       <textarea id="edit-kp-${item.id}" name="key_points" rows="3">${esc((item.key_points || []).join("\n"))}</textarea>
       <label for="edit-tags-${item.id}">Тэгі (праз коску)</label>
       <input id="edit-tags-${item.id}" name="tags" value="${esc((item.tags || []).join(", "))}">
+      ${feedbackControls(true)}
       <div class="row">
         <button class="action" data-act="save">Захаваць</button>
         <button class="action ghost" data-act="generate-keypoints">🔑 Галоўнае</button>
         <button class="action ghost" data-act="cancel" style="flex:0 0 60px">Скасаваць</button>
       </div>
     </div>
+    ${feedbackControls()}
     <div class="row">
       <button class="action" data-act="approve">✅ Публікаваць</button>
       <button class="action ghost" data-act="edit" aria-label="Рэдагаваць">✏️</button>
@@ -329,6 +384,7 @@ function processedCardHtml(item) {
 // --- queue rendering ---------------------------------------------------------
 
 let rawPage = 0;
+let queueDirty = false;
 let rawQueueData = null;
 let processedQueueData = null;
 
@@ -343,10 +399,12 @@ function renderSubTabs() {
 async function renderQueue() {
   const el = document.getElementById("content");
   try {
-    let [rawData, processedData] = await Promise.all([
+    let [rawData, processedData, editorialData] = await Promise.all([
       call(`/queue/raw?page=${rawPage}`),
       call("/queue"),
+      call("/editorial/summary"),
     ]);
+    feedbackReasons = editorialData.reason_options;
     if (!rawData.items.length && rawPage > 0) {
       rawPage = Math.max(0, Math.ceil(rawData.total / rawData.page_size) - 1);
       rawData = await call(`/queue/raw?page=${rawPage}`);
@@ -381,6 +439,7 @@ async function renderQueue() {
     }
 
     el.innerHTML = html;
+    queueDirty = false;
 
     if (editingId) {
       const editor = document.getElementById("edit-" + editingId);
@@ -429,6 +488,21 @@ async function renderStats() {
     </div>`;
 }
 
+async function renderLearning() {
+  const data = await call("/editorial/summary");
+  feedbackReasons = data.reason_options;
+  document.getElementById("content").innerHTML = `
+    <p>🧪 Тэневы рэжым · ${esc(data.policy_version)}. Рэкамендацыі заснаваныя на правілах, навучанай мадэлі яшчэ няма. Пераклад і публікацыя запускаюцца чалавекам.</p>
+    <div class="statgrid">
+      <div class="stat"><b>${data.events_total}</b><span>падзей у гісторыі</span></div>
+      <div class="stat"><b>${data.eligible_events}</b><span>навучальных кандыдатаў</span></div>
+      <div class="stat"><b>${data.eligible_stories}</b><span>сюжэтаў з прыкладамі</span></div>
+    </div>
+    <p>Адбор: ${data.selection_baseline.matches} супадзенняў з ${data.selection_baseline.comparable} параўнальных рашэнняў; ${data.selection_baseline.deferred} перададзена рэдактару. Гэта ацэнка пачатковых правілаў, а не дакладнасці фактаў або перакладу.</p>
+    <p>Пазначайце прычыны рашэнняў і правак. Ліміты, масавыя адхіленні, сістэмныя і дэманстрацыйныя дзеянні не лічацца рэдактарскімі прыкладамі. Гэтыя лічбы не азначаюць гатоўнасць да аўтапублікацыі.</p>
+    <ul>${Object.entries(data.by_reason).map(([code, count]) => `<li>${esc(feedbackReasons.find(r => r.code === code)?.label || code)}: ${count}</li>`).join("")}</ul>`;
+}
+
 // --- action handlers ---------------------------------------------------------
 
 async function handleAction(id, act, card, actionButton) {
@@ -445,16 +519,21 @@ async function handleAction(id, act, card, actionButton) {
     return;
   }
 
+  if (act === "history") {
+    const panel = card.querySelector(".history-panel");
+    if (!panel.hidden) { panel.hidden = true; return; }
+    const data = await call(`/items/${id}/history`);
+    panel.innerHTML = historyHtml(data.events);
+    panel.hidden = false;
+    return;
+  }
+
   if (act === "save") {
-    const kpRaw = editor.querySelector('[name="key_points"]').value;
-    const body = {
-      title_be: editor.querySelector('[name="title_be"]').value,
-      summary: editor.querySelector('[name="summary"]').value,
-      key_points: kpRaw.split("\n").map(t => t.trim()).filter(Boolean),
-      tags: editor.querySelector('[name="tags"]').value.split(",").map(t => t.trim()).filter(Boolean),
-    };
+    const body = editorPayload(card);
     const updated = await call(`/items/${id}/edit`, { method: "POST", body: JSON.stringify(body) });
     card.outerHTML = processedCardHtml(updated);
+    editingId = null;
+    queueDirty = false;
     toast("Захавана");
     tg?.HapticFeedback?.notificationOccurred("success");
     return;
@@ -462,7 +541,10 @@ async function handleAction(id, act, card, actionButton) {
 
   if (act === "approve" || act === "reject") {
     if (act === "reject" && !confirm("Адхіліць навіну?")) return;
-    await call(`/items/${id}/${act}`, { method: "POST" });
+    if (act === "approve" && editor?.classList.contains("open")) {
+      await call(`/items/${id}/edit`, {method:"POST", body: JSON.stringify(editorPayload(card))});
+    }
+    await call(`/items/${id}/${act}`, { method: "POST", body: JSON.stringify(feedbackPayload(card)) });
     card.style.opacity = ".35"; card.style.pointerEvents = "none";
     toast(act === "approve" ? "У чарзе на публікацыю" : "Адхілена");
     tg?.HapticFeedback?.notificationOccurred(act === "approve" ? "success" : "warning");
@@ -483,6 +565,7 @@ async function handleAction(id, act, card, actionButton) {
     const current = await call(`/items/${id}`);
     const incomplete = current.text_quality?.needs_confirmation !== false;
     if (incomplete && !confirm((current.text_quality?.label || "Паўната тэксту невядомая") + ". Перакласці толькі даступны тэкст?")) return;
+    const translationFeedback = feedbackPayload(card);
     card.style.opacity = "1"; card.style.pointerEvents = "none";
     const stepLabels = {
       warmup: "⚙️ Загрузка мадэлі...",
@@ -502,7 +585,7 @@ async function handleAction(id, act, card, actionButton) {
         </div>
       </div>`;
     try {
-      await call(`/items/${id}/translate?allow_incomplete=${incomplete}`, { method: "POST" });
+      await call(`/items/${id}/translate?allow_incomplete=${incomplete}`, { method: "POST", body: JSON.stringify(translationFeedback) });
       // Poll progress
       const stepOrder = ["warmup","translating","summary","polishing","analyzing","done"];
       let lastStep = "";
@@ -560,14 +643,7 @@ async function handleAction(id, act, card, actionButton) {
 
   if (act === "generate-keypoints") {
     if (editor && editor.classList.contains("open")) {
-      await call(`/items/${id}/edit`, {
-        method: "POST",
-        body: JSON.stringify({
-          title_be: editor.querySelector('[name="title_be"]').value,
-          summary: editor.querySelector('[name="summary"]').value,
-          tags: editor.querySelector('[name="tags"]').value.split(",").map(t => t.trim()).filter(Boolean),
-        }),
-      });
+      await call(`/items/${id}/edit`, {method:"POST", body: JSON.stringify(editorPayload(card))});
     }
     card.style.opacity = ".5"; card.style.pointerEvents = "none";
     try {
@@ -587,10 +663,11 @@ async function handleAction(id, act, card, actionButton) {
 
 // --- wiring ------------------------------------------------------------------
 
-const renderers = { queue: renderQueue, published: renderPublished, stats: renderStats };
+const renderers = { queue: renderQueue, published: renderPublished, stats: renderStats, learning: renderLearning };
 
 async function show(tab) {
   activeTab = tab;
+  queueDirty = false;
   document.querySelectorAll(".tab").forEach(t => {
     const isActive = t.dataset.tab === tab;
     t.classList.toggle("active", isActive);
@@ -668,9 +745,16 @@ document.getElementById("content").addEventListener("click", async (e) => {
   finally { button.disabled = false; }
 });
 
+document.getElementById("content").addEventListener("input", e => {
+  if (e.target.matches("input, textarea, select")) queueDirty = true;
+});
+document.getElementById("content").addEventListener("change", e => {
+  if (e.target.matches("input, textarea, select")) queueDirty = true;
+});
+
 show("queue");
 setInterval(() => {
-  if (activeTab === "queue") renderQueue().catch(() => {});
+  if (activeTab === "queue" && !editingId && !queueDirty && !document.querySelector(".loading-overlay")) renderQueue().catch(() => {});
 }, 60000);
 </script>
 </body>

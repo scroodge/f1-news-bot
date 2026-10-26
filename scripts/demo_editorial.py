@@ -73,12 +73,14 @@ class DemoProcessor:
         await asyncio.sleep(1)
         item = await db.get_item(item_id)
         translated = ProcessedNewsItem(
-            **item.model_dump(),
-            summary="Дэманстрацыйны тэкст.",
-            translated_title="[ДЭМА] Прыклад перакладу матэрыялу",
-            translated_summary="Гэта імітацыя перакладу для праверкі інтэрфейсу. "
-            "Сапраўдная мадэль AI не выклікалася.\n\n" + item.content,
-            original_language="en",
+            **{
+                **item.model_dump(),
+                "summary": "Дэманстрацыйны тэкст.",
+                "translated_title": "[ДЭМА] Прыклад перакладу матэрыялу",
+                "translated_summary": "Гэта імітацыя перакладу для праверкі інтэрфейсу. "
+                "Сапраўдная мадэль AI не выклікалася.\n\n" + item.content,
+                "original_language": "en",
+            }
         )
         await db.mark_processed(item_id, translated)
         self.progress[item_id] = SimpleNamespace(

@@ -12,6 +12,7 @@ from datetime import datetime, timedelta
 
 from sqlalchemy import (
     JSON,
+    Boolean,
     DateTime,
     Enum,
     Float,
@@ -31,6 +32,16 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 from .config import settings
 from .editorial import editorial_priority_sql
+from .editorial_learning import (
+    DRAFT_FIELDS,
+    SOURCE_FIELDS,
+    changes_between,
+    shadow_recommendation,
+    snapshot,
+    stable_hash,
+    training_eligible,
+    version_context,
+)
 from .models import NewsItem, NewsStatus, ProcessedNewsItem, SourceType, Stats
 from .utils.timezone import to_naive_utc
 
@@ -96,6 +107,68 @@ class NewsItemDB(Base):
 
     # LLM token usage tracking
     llm_usage: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+
+
+class EditorialEventDB(Base):
+    """Append-only application journal; no cascading FK to mutable news rows."""
+
+    __tablename__ = "editorial_events"
+    __table_args__ = (
+        Index("ix_editorial_events_news_created", "news_id", "created_at"),
+        Index("ix_editorial_events_created", "created_at"),
+    )
+    id: Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    news_id: Mapped[uuid.UUID] = mapped_column(Uuid, nullable=False)
+    story_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
+    kind: Mapped[str] = mapped_column(String(40), nullable=False)
+    actor: Mapped[dict] = mapped_column(JSON, nullable=False)
+    reason_code: Mapped[str] = mapped_column(String(40), nullable=False)
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    before: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    after: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    changes: Mapped[dict] = mapped_column(JSON, nullable=False)
+    recommendation: Mapped[dict] = mapped_column(JSON, nullable=False)
+    versions: Mapped[dict] = mapped_column(JSON, nullable=False)
+    source_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    draft_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    training_eligible: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+
+def _append_editorial_event(
+    session,
+    item,
+    kind,
+    before=None,
+    actor=None,
+    reason="unspecified",
+    note=None,
+    recommendation=None,
+):
+    after = snapshot(item)
+    changes = changes_between(before, after)
+    actor = actor or {"kind": "system", "interface": "internal"}
+    is_demo = (item.collection_info or {}).get("text_origin") == "demo"
+    if is_demo:
+        actor = {**actor, "kind": "demo"}
+    session.add(
+        EditorialEventDB(
+            news_id=item.id,
+            story_id=item.story_id or item.id.hex,
+            kind=kind,
+            actor=dict(actor),
+            reason_code=reason,
+            note=note,
+            before=before,
+            after=after,
+            changes=changes,
+            recommendation=recommendation or shadow_recommendation(item),
+            versions={**version_context(), "execution_mode": "demo" if is_demo else "normal"},
+            source_hash=stable_hash({k: after.get(k) for k in SOURCE_FIELDS}),
+            draft_hash=stable_hash({k: after.get(k) for k in DRAFT_FIELDS}),
+            training_eligible=training_eligible(kind, actor, reason, changes),
+        )
+    )
 
 
 def _to_model(item: NewsItemDB) -> ProcessedNewsItem | NewsItem:
@@ -189,6 +262,8 @@ class DatabaseManager:
             )
             s.add(db_item)
             try:
+                await s.flush()
+                _append_editorial_event(s, db_item, "collected")
                 await s.commit()
             except IntegrityError:
                 await s.rollback()
@@ -200,9 +275,10 @@ class DatabaseManager:
     ) -> bool:
         """Attach AI results and move collected -> processed (or re-process)"""
         async with self.session() as s:
-            item = await s.get(NewsItemDB, uuid.UUID(news_id))
-            if not item:
+            item = await s.get(NewsItemDB, uuid.UUID(news_id), with_for_update=True)
+            if not item or item.status not in {NewsStatus.COLLECTED, NewsStatus.PROCESSED}:
                 return False
+            before, recommendation = snapshot(item), shadow_recommendation(item)
             item.summary = processed.summary
             item.key_points = processed.key_points
             item.sentiment = processed.sentiment
@@ -216,31 +292,56 @@ class DatabaseManager:
             item.status = NewsStatus.PROCESSED
             if llm_usage is not None:
                 item.llm_usage = llm_usage
+            _append_editorial_event(
+                s, item, "draft_generated", before, recommendation=recommendation
+            )
             await s.commit()
             return True
 
-    async def approve(self, news_id: str) -> bool:
-        """Admin approved: processed -> queued"""
+    async def approve(
+        self, news_id: str, *, actor=None, reason_code="unspecified", note=None
+    ) -> bool:
+        """Admin approved: processed -> queued, with an atomic feedback snapshot."""
         return await self._transition(
-            news_id, from_statuses={NewsStatus.PROCESSED}, to_status=NewsStatus.QUEUED
+            news_id,
+            from_statuses={NewsStatus.PROCESSED},
+            to_status=NewsStatus.QUEUED,
+            actor=actor,
+            reason_code=reason_code,
+            note=note,
         )
 
-    async def reject(self, news_id: str, reason: str | None = None) -> bool:
-        """Rules or admin rejected: collected/processed/queued -> rejected"""
+    async def reject(
+        self,
+        news_id: str,
+        reason: str | None = None,
+        *,
+        actor=None,
+        reason_code="unspecified",
+        note=None,
+    ) -> bool:
         async with self.session() as s:
-            item = await s.get(NewsItemDB, uuid.UUID(news_id))
-            if not item or item.status == NewsStatus.PUBLISHED:
+            item = await s.get(NewsItemDB, uuid.UUID(news_id), with_for_update=True)
+            if not item or item.status not in {
+                NewsStatus.COLLECTED,
+                NewsStatus.PROCESSED,
+                NewsStatus.QUEUED,
+            }:
                 return False
+            before, recommendation = snapshot(item), shadow_recommendation(item)
             item.status = NewsStatus.REJECTED
             item.rejected_reason = reason
             item.moderated_at = datetime.utcnow()
+            _append_editorial_event(
+                s, item, "rejected", before, actor, reason_code, note, recommendation
+            )
             await s.commit()
             return True
 
     async def mark_published(self, news_id: str, telegram_message_id: int | None = None) -> bool:
         """Publisher done: queued -> published"""
         async with self.session() as s:
-            item = await s.get(NewsItemDB, uuid.UUID(news_id))
+            item = await s.get(NewsItemDB, uuid.UUID(news_id), with_for_update=True)
             if not item:
                 return False
             item.status = NewsStatus.PUBLISHED
@@ -249,17 +350,39 @@ class DatabaseManager:
             await s.commit()
             return True
 
-    async def _transition(self, news_id: str, from_statuses: set, to_status: NewsStatus) -> bool:
+    async def _transition(
+        self,
+        news_id: str,
+        from_statuses: set,
+        to_status: NewsStatus,
+        *,
+        actor=None,
+        reason_code="unspecified",
+        note=None,
+    ) -> bool:
         async with self.session() as s:
-            item = await s.get(NewsItemDB, uuid.UUID(news_id))
+            item = await s.get(NewsItemDB, uuid.UUID(news_id), with_for_update=True)
             if not item or NewsStatus(item.status) not in from_statuses:
                 return False
+            before, recommendation = snapshot(item), shadow_recommendation(item)
             item.status = to_status
             item.moderated_at = datetime.utcnow()
+            _append_editorial_event(
+                s, item, "approved", before, actor, reason_code, note, recommendation
+            )
             await s.commit()
             return True
 
-    async def update_fields(self, news_id: str, **fields) -> bool:
+    async def update_fields(
+        self,
+        news_id: str,
+        *,
+        editorial_actor=None,
+        feedback_reason="unspecified",
+        feedback_note=None,
+        event_type=None,
+        **fields,
+    ) -> bool:
         """Update editable content fields (title, summary, ...)"""
         allowed = {
             "title",
@@ -276,11 +399,24 @@ class DatabaseManager:
         if unknown:
             raise ValueError(f"Fields not editable: {unknown}")
         async with self.session() as s:
-            item = await s.get(NewsItemDB, uuid.UUID(news_id))
+            item = await s.get(NewsItemDB, uuid.UUID(news_id), with_for_update=True)
             if not item:
                 return False
+            before, recommendation = snapshot(item), shadow_recommendation(item)
             for key, value in fields.items():
                 setattr(item, key, value)
+            if before != snapshot(item):
+                kind = event_type or ("edited" if editorial_actor else "system_updated")
+                _append_editorial_event(
+                    s,
+                    item,
+                    kind,
+                    before,
+                    editorial_actor,
+                    feedback_reason,
+                    feedback_note,
+                    recommendation,
+                )
             await s.commit()
             return True
 
@@ -319,33 +455,143 @@ class DatabaseManager:
             logger.info(f"Deleted news item {news_id}")
             return True
 
-    async def reject_all_pending(self) -> int:
+    async def reject_all_pending(self, *, actor=None) -> int:
         """Reject everything awaiting moderation (PROCESSED). Returns count."""
         async with self.session() as s:
             result = await s.execute(
-                select(NewsItemDB).where(NewsItemDB.status == NewsStatus.PROCESSED)
+                select(NewsItemDB)
+                .where(NewsItemDB.status == NewsStatus.PROCESSED)
+                .with_for_update()
             )
             items = result.scalars().all()
             for item in items:
+                before, recommendation = snapshot(item), shadow_recommendation(item)
                 item.status = NewsStatus.REJECTED
                 item.rejected_reason = "bulk-rejected by admin"
                 item.moderated_at = datetime.utcnow()
+                _append_editorial_event(
+                    s, item, "bulk_rejected", before, actor, recommendation=recommendation
+                )
             await s.commit()
             return len(items)
 
-    async def reject_all_collected(self) -> int:
+    async def reject_all_collected(self, *, actor=None) -> int:
         """Reject all collected (untouched) items. Returns count."""
         async with self.session() as s:
             result = await s.execute(
-                select(NewsItemDB).where(NewsItemDB.status == NewsStatus.COLLECTED)
+                select(NewsItemDB)
+                .where(NewsItemDB.status == NewsStatus.COLLECTED)
+                .with_for_update()
             )
             items = result.scalars().all()
             for item in items:
+                before, recommendation = snapshot(item), shadow_recommendation(item)
                 item.status = NewsStatus.REJECTED
                 item.rejected_reason = "bulk-rejected by admin"
                 item.moderated_at = datetime.utcnow()
+                _append_editorial_event(
+                    s, item, "bulk_rejected", before, actor, recommendation=recommendation
+                )
             await s.commit()
             return len(items)
+
+    async def record_editorial_action(
+        self, news_id: str, kind: str, *, actor=None, reason_code="unspecified", note=None
+    ) -> bool:
+        """Record an intent such as translation selection; not a successful AI result."""
+        if kind not in {"translation_requested", "keypoints_requested"}:
+            raise ValueError("Unsupported editorial intent")
+        async with self.session() as s:
+            item = await s.get(NewsItemDB, uuid.UUID(news_id), with_for_update=True)
+            if not item or item.status not in {NewsStatus.COLLECTED, NewsStatus.PROCESSED}:
+                return False
+            _append_editorial_event(s, item, kind, snapshot(item), actor, reason_code, note)
+            await s.commit()
+            return True
+
+    async def get_editorial_history(self, news_id: str, limit: int = 20) -> list[dict]:
+        async with self.session() as s:
+            rows = (
+                await s.execute(
+                    select(EditorialEventDB)
+                    .where(EditorialEventDB.news_id == uuid.UUID(news_id))
+                    .order_by(EditorialEventDB.created_at.desc(), EditorialEventDB.id)
+                    .limit(limit)
+                )
+            ).scalars()
+            return [
+                {
+                    "id": str(row.id),
+                    "news_id": str(row.news_id),
+                    "story_id": row.story_id,
+                    "kind": row.kind,
+                    "actor": row.actor,
+                    "reason_code": row.reason_code,
+                    "note": row.note,
+                    "before": row.before,
+                    "after": row.after,
+                    "changes": row.changes,
+                    "recommendation": row.recommendation,
+                    "versions": row.versions,
+                    "source_hash": row.source_hash,
+                    "draft_hash": row.draft_hash,
+                    "training_eligible": row.training_eligible,
+                    "created_at": row.created_at.isoformat(),
+                }
+                for row in rows
+            ]
+
+    async def get_editorial_summary(self) -> dict:
+        async with self.session() as s:
+            total = await s.scalar(select(func.count()).select_from(EditorialEventDB))
+            eligible = EditorialEventDB.training_eligible.is_(True)
+            events = await s.scalar(
+                select(func.count()).select_from(EditorialEventDB).where(eligible)
+            )
+            stories = await s.scalar(
+                select(func.count(func.distinct(EditorialEventDB.story_id))).where(eligible)
+            )
+            reasons = (
+                await s.execute(
+                    select(EditorialEventDB.reason_code, func.count())
+                    .where(eligible)
+                    .group_by(EditorialEventDB.reason_code)
+                )
+            ).all()
+            selection = EditorialEventDB.recommendation["selection"].as_string()
+            decisions = (
+                await s.execute(
+                    select(
+                        EditorialEventDB.kind, EditorialEventDB.reason_code, selection, func.count()
+                    )
+                    .where(
+                        eligible,
+                        EditorialEventDB.before["status"].as_string() == NewsStatus.COLLECTED.value,
+                        EditorialEventDB.kind.in_(["translation_requested", "rejected"]),
+                    )
+                    .group_by(EditorialEventDB.kind, EditorialEventDB.reason_code, selection)
+                )
+            ).all()
+            comparable = matches = deferred = 0
+            skip_reasons = {"duplicate", "low_novelty", "not_interesting", "outdated"}
+            for kind, reason, suggested, count in decisions:
+                if suggested == "human_review":
+                    deferred += count
+                elif kind == "translation_requested" or reason in skip_reasons:
+                    comparable += count
+                    target = "translate" if kind == "translation_requested" else "skip"
+                    matches += count if suggested == target else 0
+            return {
+                "selection_baseline": {
+                    "comparable": comparable,
+                    "matches": matches,
+                    "deferred": deferred,
+                },
+                "events_total": total or 0,
+                "eligible_events": events or 0,
+                "eligible_stories": stories or 0,
+                "by_reason": dict(reasons),
+            }
 
     # --- reads ------------------------------------------------------------
 

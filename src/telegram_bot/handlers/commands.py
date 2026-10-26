@@ -99,7 +99,10 @@ async def publish_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if item is None:
         await update.message.reply_text("❌ Новость с таким номером не найдена в очереди")
         return
-    if await db_manager.approve(item.id):
+    if await db_manager.approve(
+        item.id,
+        actor={"kind": "human", "id": str(update.effective_user.id), "interface": "telegram"},
+    ):
         await update.message.reply_text(
             f"✅ Одобрено: {item.title[:80]}\n"
             "Будет опубликовано автоматически (с учётом лимита в час)."
