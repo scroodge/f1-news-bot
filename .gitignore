@@ -132,3 +132,4 @@ dmypy.json
 telegram_session.session
 f1_news_bot.session
 *.session-journal
+.claude/worktrees/
