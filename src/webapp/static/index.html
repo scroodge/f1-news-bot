@@ -258,7 +258,7 @@ function processedCardHtml(item) {
       <span>🌐 ${esc(item.original_language || "?")}</span>
       ${usageLine ? `<span>${usageLine}</span>` : ""}
     </div>
-    <button class="orig-toggle" data-act="toggle-original" aria-expanded="false" aria-controls="orig-${item.id}">📄 Арыгінал</button>
+    <button class="orig-toggle" data-act="toggle-original" aria-expanded="false">📄 Арыгінал</button>
     <div class="orig-content" id="orig-${item.id}">
       <div><div class="orig-inner"><b>${esc(item.title)}</b>\n\n${esc(item.original_content || "")}</div></div>
     </div>
