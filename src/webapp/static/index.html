@@ -175,10 +175,10 @@
     <h1>F1 News</h1>
     <span class="head-badge">мадэрацыя</span>
   </div>
-  <div class="tabs">
-    <button class="tab active" data-tab="queue">Чарга <span id="queue-count"></span></button>
-    <button class="tab" data-tab="published">Гісторыя</button>
-    <button class="tab" data-tab="stats">Статыстыка</button>
+  <div class="tabs" role="tablist">
+    <button class="tab active" data-tab="queue" role="tab" aria-selected="true">Чарга <span id="queue-count"></span></button>
+    <button class="tab" data-tab="published" role="tab" aria-selected="false">Гісторыя</button>
+    <button class="tab" data-tab="stats" role="tab" aria-selected="false">Статыстыка</button>
   </div>
 </header>
 <main id="content"><div class="empty">Загрузка…</div></main>
@@ -234,7 +234,7 @@ function rawCardHtml(item) {
     </div>
     <div class="row">
       <button class="action" data-act="translate">🌐 Перакласці</button>
-      <button class="action danger ghost" data-act="reject" style="flex:0 0 44px" aria-label="Адхіліць">✕</button>
+      <button class="action danger ghost" data-act="reject" style="flex:0 0 44px" aria-label="Адхіліць" title="Адхіліць">✕</button>
     </div>
   </div>`;
 }
@@ -279,8 +279,8 @@ function processedCardHtml(item) {
     </div>
     <div class="row">
       <button class="action" data-act="approve">✅ Публікаваць</button>
-      <button class="action ghost" data-act="edit" aria-label="Рэдагаваць">✏️</button>
-      <button class="action danger ghost" data-act="reject" style="flex:0 0 44px" aria-label="Адхіліць">✕</button>
+      <button class="action ghost" data-act="edit" aria-label="Рэдагаваць" title="Рэдагаваць">✏️</button>
+      <button class="action danger ghost" data-act="reject" style="flex:0 0 44px" aria-label="Адхіліць" title="Адхіліць">✕</button>
     </div>
     <button class="action ghost" data-act="translate" style="font-size:12px">🌐 Пераперакласці</button>
   </div>`;
@@ -293,9 +293,9 @@ let processedQueueData = null;
 
 function renderSubTabs() {
   return `
-    <div class="sub-tabs">
-      <button class="sub-tab ${queueSubTab === "raw" ? "active" : ""}" data-subtab="raw">Новыя${rawQueueData ? ` (${rawQueueData.total})` : ""}</button>
-      <button class="sub-tab ${queueSubTab === "processed" ? "active" : ""}" data-subtab="processed">На модэрацыі${processedQueueData ? ` (${processedQueueData.total})` : ""}</button>
+    <div class="sub-tabs" role="tablist">
+      <button class="sub-tab ${queueSubTab === "raw" ? "active" : ""}" data-subtab="raw" role="tab" aria-selected="${queueSubTab === "raw" ? "true" : "false"}">Новыя${rawQueueData ? ` (${rawQueueData.total})` : ""}</button>
+      <button class="sub-tab ${queueSubTab === "processed" ? "active" : ""}" data-subtab="processed" role="tab" aria-selected="${queueSubTab === "processed" ? "true" : "false"}">На модэрацыі${processedQueueData ? ` (${processedQueueData.total})` : ""}</button>
     </div>`;
 }
 
@@ -529,7 +529,11 @@ const renderers = { queue: renderQueue, published: renderPublished, stats: rende
 
 async function show(tab) {
   activeTab = tab;
-  document.querySelectorAll(".tab").forEach(t => t.classList.toggle("active", t.dataset.tab === tab));
+  document.querySelectorAll(".tab").forEach(t => {
+    const isActive = t.dataset.tab === tab;
+    t.classList.toggle("active", isActive);
+    t.setAttribute("aria-selected", isActive ? "true" : "false");
+  });
   document.getElementById("content").innerHTML = `<div class="empty">Загрузка…</div>`;
   try { await renderers[tab](); }
   catch (e) { document.getElementById("content").innerHTML = `<div class="empty">Памылка: ${esc(e.message || e)}</div>`; }
