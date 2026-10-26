@@ -33,11 +33,14 @@ class TelegramCollector(BaseCollector):
         self.api_hash = settings.telegram_api_hash
         self.phone = settings.telegram_phone
 
-        # Check if credentials are available
-        if not all([self.api_id, self.api_hash, self.phone]):
-            logger.warning(
-                "Telegram API credentials not configured. Telegram collector will be disabled."
-            )
+        # Enabled only with real credentials and real channels; .env.example
+        # placeholders (your_api_id_here, @f1channel1) count as unconfigured.
+        self.channels = [c for c in self.channels if not c.startswith("@f1channel")]
+        credentials_ok = str(self.api_id).isdigit() and all(
+            v and not v.startswith("your_") for v in (self.api_hash, self.phone)
+        )
+        if not credentials_ok or not self.channels:
+            logger.info("Telegram collector disabled - no API credentials or channels configured")
             self.enabled = False
         else:
             self.enabled = True
