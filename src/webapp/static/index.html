@@ -84,7 +84,7 @@
   }
   button.action:active { transform: scale(.96); }
   button.action:disabled { opacity: .4; transform: none; }
-  button:focus-visible, input:focus-visible, textarea:focus-visible, .tab:focus-visible, .sub-tab:focus-visible {
+  button:focus-visible, input:focus-visible, textarea:focus-visible, .sub-tab:focus-visible, .orig-toggle:focus-visible {
     outline: 2px solid var(--btn);
     outline-offset: 2px;
   }
@@ -218,7 +218,7 @@ const esc = (s) => (s || "").replace(/[&<>"]/g, c => ({ "&":"&amp;", "<":"&lt;",
 // --- raw-item card ----------------------------------------------------------
 
 function rawCardHtml(item) {
-  const img = item.image_url ? `<img class="card-img" src="${esc(item.image_url)}" loading="lazy" onerror="this.remove()">` : "";
+  const img = item.image_url ? `<img class="card-img" src="${esc(item.image_url)}" alt="Малюнак да навіны" loading="lazy" onerror="this.remove()">` : "";
   const snippet = (item.content || "").length > 400 ? item.content.slice(0, 400) + "..." : item.content;
   const collapsed = `📰 ${item.title}\n\n${snippet}\n\n🔗 ${item.url}`;
   const full = `📰 ${item.title}\n\n${item.content}\n\n🔗 ${item.url}`;
@@ -234,7 +234,7 @@ function rawCardHtml(item) {
     </div>
     <div class="row">
       <button class="action" data-act="translate">🌐 Перакласці</button>
-      <button class="action danger ghost" data-act="reject" style="flex:0 0 44px" aria-label="Адхіліць" title="Адхіліць">✕</button>
+      <button class="action danger ghost" data-act="reject" aria-label="Адхіліць" title="Адхіліць" style="flex:0 0 44px">✕</button>
     </div>
   </div>`;
 }
@@ -246,7 +246,7 @@ function processedCardHtml(item) {
   const usageLine = usage.prompt_tokens != null
     ? `🪙 ${usage.prompt_tokens}+${usage.completion_tokens}`
     : "";
-  const img = item.image_url ? `<img class="card-img" src="${esc(item.image_url)}" loading="lazy" onerror="this.remove()">` : "";
+  const img = item.image_url ? `<img class="card-img" src="${esc(item.image_url)}" alt="Малюнак да навіны" loading="lazy" onerror="this.remove()">` : "";
   return `
   <div class="card" data-id="${item.id}">
     ${img}
@@ -280,7 +280,7 @@ function processedCardHtml(item) {
     <div class="row">
       <button class="action" data-act="approve">✅ Публікаваць</button>
       <button class="action ghost" data-act="edit" aria-label="Рэдагаваць" title="Рэдагаваць">✏️</button>
-      <button class="action danger ghost" data-act="reject" style="flex:0 0 44px" aria-label="Адхіліць" title="Адхіліць">✕</button>
+      <button class="action danger ghost" data-act="reject" aria-label="Адхіліць" title="Адхіліць" style="flex:0 0 44px">✕</button>
     </div>
     <button class="action ghost" data-act="translate" style="font-size:12px">🌐 Пераперакласці</button>
   </div>`;
@@ -294,8 +294,8 @@ let processedQueueData = null;
 function renderSubTabs() {
   return `
     <div class="sub-tabs" role="tablist">
-      <button class="sub-tab ${queueSubTab === "raw" ? "active" : ""}" data-subtab="raw" role="tab" aria-selected="${queueSubTab === "raw" ? "true" : "false"}">Новыя${rawQueueData ? ` (${rawQueueData.total})` : ""}</button>
-      <button class="sub-tab ${queueSubTab === "processed" ? "active" : ""}" data-subtab="processed" role="tab" aria-selected="${queueSubTab === "processed" ? "true" : "false"}">На модэрацыі${processedQueueData ? ` (${processedQueueData.total})` : ""}</button>
+      <button class="sub-tab ${queueSubTab === "raw" ? "active" : ""}" data-subtab="raw" role="tab" aria-selected="${queueSubTab === "raw"}">Новыя${rawQueueData ? ` (${rawQueueData.total})` : ""}</button>
+      <button class="sub-tab ${queueSubTab === "processed" ? "active" : ""}" data-subtab="processed" role="tab" aria-selected="${queueSubTab === "processed"}">На модэрацыі${processedQueueData ? ` (${processedQueueData.total})` : ""}</button>
     </div>`;
 }
 
