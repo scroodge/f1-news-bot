@@ -62,8 +62,11 @@ def test_html_accessibility_attributes():
     assert 'aria-label="Рэдагаваць"' in html
 
 
-def test_collapsible_controls_have_aria_attributes():
+def test_accessibility_attributes_present():
     html = INDEX_HTML.read_text(encoding="utf-8")
-    assert 'aria-expanded="false"' in html
-    assert 'aria-controls="orig-${item.id}"' in html
-    assert 'button.setAttribute("aria-expanded", isOpen ? "true" : "false")' in html
+    assert 'role="tablist"' in html
+    assert 'role="tab"' in html
+    assert "aria-selected=" in html
+    assert "aria-expanded=" in html
+    assert "aria-controls=" in html
+    assert ":focus-visible" in html

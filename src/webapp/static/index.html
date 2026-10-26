@@ -82,6 +82,9 @@
     font-size: 14px; font-weight: 600; cursor: pointer; transition: all .15s ease-out;
     background: var(--btn); color: var(--btn-fg); -webkit-tap-highlight-color: transparent;
   }
+  button:focus-visible, .tab:focus-visible, .sub-tab:focus-visible, input:focus-visible, textarea:focus-visible {
+    outline: 2px solid var(--btn); outline-offset: 2px;
+  }
   button.action:active { transform: scale(.96); }
   button.action:disabled { opacity: .4; transform: none; }
   button:focus-visible, input:focus-visible, textarea:focus-visible, .sub-tab:focus-visible, .orig-toggle:focus-visible {
@@ -175,10 +178,10 @@
     <h1>F1 News</h1>
     <span class="head-badge">мадэрацыя</span>
   </div>
-  <div class="tabs" role="tablist" aria-label="Раздзелы">
-    <button class="tab active" role="tab" aria-selected="true" data-tab="queue">Чарга <span id="queue-count"></span></button>
-    <button class="tab" role="tab" aria-selected="false" data-tab="published">Гісторыя</button>
-    <button class="tab" role="tab" aria-selected="false" data-tab="stats">Статыстыка</button>
+  <div class="tabs" role="tablist">
+    <button class="tab active" data-tab="queue" role="tab" aria-selected="true">Чарга <span id="queue-count"></span></button>
+    <button class="tab" data-tab="published" role="tab" aria-selected="false">Гісторыя</button>
+    <button class="tab" data-tab="stats" role="tab" aria-selected="false">Статыстыка</button>
   </div>
 </header>
 <main id="content"><div class="empty">Загрузка…</div></main>
@@ -293,9 +296,9 @@ let processedQueueData = null;
 
 function renderSubTabs() {
   return `
-    <div class="sub-tabs" role="tablist" aria-label="Падпадзелы">
-      <button class="sub-tab ${queueSubTab === "raw" ? "active" : ""}" role="tab" aria-selected="${queueSubTab === "raw"}" data-subtab="raw">Новыя${rawQueueData ? ` (${rawQueueData.total})` : ""}</button>
-      <button class="sub-tab ${queueSubTab === "processed" ? "active" : ""}" role="tab" aria-selected="${queueSubTab === "processed"}" data-subtab="processed">На модэрацыі${processedQueueData ? ` (${processedQueueData.total})` : ""}</button>
+    <div class="sub-tabs" role="tablist">
+      <button class="sub-tab ${queueSubTab === "raw" ? "active" : ""}" data-subtab="raw" role="tab" aria-selected="${queueSubTab === "raw" ? "true" : "false"}">Новыя${rawQueueData ? ` (${rawQueueData.total})` : ""}</button>
+      <button class="sub-tab ${queueSubTab === "processed" ? "active" : ""}" data-subtab="processed" role="tab" aria-selected="${queueSubTab === "processed" ? "true" : "false"}">На модэрацыі${processedQueueData ? ` (${processedQueueData.total})` : ""}</button>
     </div>`;
 }
 
