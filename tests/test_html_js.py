@@ -69,7 +69,41 @@ def test_accessibility_attributes_present():
     assert "aria-selected=" in html
     assert "aria-expanded=" in html
     assert "aria-controls=" in html
+    assert 'aria-label="Пагінацыя"' in html
     assert ":focus-visible" in html
+
+
+def test_processed_card_and_history_accessibility_attributes():
+    """Verify processedCardHtml and evidenceHtml render aria-controls and aria-expanded for controls."""
+    import json
+
+    script = _script_content()
+    functions = script[script.index("const esc =") : script.index("// --- wiring")]
+    assertions = r"""
+const assert = require('node:assert/strict');
+let editingId = null;
+const sample = {
+  id: 'item123',
+  title: 'Test Article',
+  content: 'Original content',
+  preview: 'Preview text',
+  source: 'F1.com',
+  importance_level: 4,
+  relevance_score: 0.9,
+  original_language: 'en'
+};
+const processed = processedCardHtml(sample);
+assert(processed.includes('aria-controls="edit-item123"'), 'edit button should have aria-controls');
+assert(processed.includes('aria-controls="hist-item123"'), 'history button should have aria-controls');
+assert(processed.includes('aria-expanded="false"'), 'collapsible components should start collapsed');
+"""
+    result = subprocess.run(
+        ["node", "-e", "const code = " + json.dumps(functions + assertions) + "; eval(code);"],
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+    assert result.returncode == 0, result.stderr
 
 
 def test_story_cards_escape_evidence_and_incomplete_translation_requires_confirmation():

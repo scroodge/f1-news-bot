@@ -290,8 +290,8 @@ function evidenceHtml(item) {
     <div ${quality.needs_confirmation ? 'role="note" style="color:var(--danger)"' : ''}>${quality.needs_confirmation ? "⚠️" : "📄"} ${esc(quality.label)} · ${quality.characters ?? 0} знакаў</div>
     <details><summary>Чаму такі прыярытэт?</summary><ul>${reasons}</ul><small>Гэта прыкметы, а не пацверджанне эксклюзіўнасці.</small></details>
     ${refs}${unlinked}${shadowHtml(item)}
-    <button class="expand-btn" data-act="history">🕘 Гісторыя рашэнняў і правак</button>
-    <div class="history-panel" hidden></div>
+    <button class="expand-btn" data-act="history" aria-expanded="false" aria-controls="hist-${item.id}">🕘 Гісторыя рашэнняў і правак</button>
+    <div class="history-panel" id="hist-${item.id}" hidden></div>
   </div>`;
 }
 
@@ -339,6 +339,7 @@ function processedCardHtml(item) {
     ? `🪙 ${usage.prompt_tokens}+${usage.completion_tokens}`
     : "";
   const img = item.image_url ? `<img class="card-img" src="${esc(item.image_url)}" alt="Малюнак да навіны" loading="lazy" onerror="this.remove()">` : "";
+  const isEditing = editingId === item.id;
   return `
   <div class="card" data-id="${item.id}">
     ${img}
@@ -374,7 +375,7 @@ function processedCardHtml(item) {
     ${feedbackControls()}
     <div class="row">
       <button class="action" data-act="approve">✅ Публікаваць</button>
-      <button class="action ghost" data-act="edit" aria-label="Рэдагаваць">✏️</button>
+      <button class="action ghost" data-act="edit" aria-label="Рэдагаваць" aria-expanded="${isEditing ? "true" : "false"}" aria-controls="edit-${item.id}">✏️</button>
       <button class="action danger ghost" data-act="reject" aria-label="Адхіліць" style="flex:0 0 44px">✕</button>
     </div>
     <button class="action ghost" data-act="translate" style="font-size:12px">🌐 Пераперакласці</button>
@@ -425,11 +426,11 @@ async function renderQueue() {
         html += `<div class="bulk-bar"><button class="pill-reject" data-act="reject-all-raw">✕ Выдаліць усе (${rawData.total_articles ?? rawData.total})</button></div>`;
         html += rawData.items.map(storyCardHtml).join("");
       }
-      html += `<div class="row">
-        <button class="action ghost" data-act="raw-prev" ${rawPage === 0 ? "disabled" : ""}>← Назад</button>
-        <span>${rawPage + 1} / ${Math.max(1, Math.ceil(rawData.total / rawData.page_size))}</span>
-        <button class="action ghost" data-act="raw-next" ${(rawPage + 1) * rawData.page_size >= rawData.total ? "disabled" : ""}>Далей →</button>
-      </div>`;
+      html += `<nav class="row" aria-label="Пагінацыя">
+        <button class="action ghost" data-act="raw-prev" ${rawPage === 0 ? "disabled" : ""} aria-label="Папярэдняя старонка">← Назад</button>
+        <span aria-current="page">${rawPage + 1} / ${Math.max(1, Math.ceil(rawData.total / rawData.page_size))}</span>
+        <button class="action ghost" data-act="raw-next" ${(rawPage + 1) * rawData.page_size >= rawData.total ? "disabled" : ""} aria-label="Наступная старонка">Далей →</button>
+      </nav>`;
     } else {
       if (!processedData.items.length) {
         html += `<div class="empty">Чарга мадэрацыі пустая</div>`;
@@ -509,22 +510,30 @@ async function handleAction(id, act, card, actionButton) {
   const editor = card.querySelector(".editor");
 
   if (act === "edit") {
-    editor.classList.toggle("open");
-    editingId = editor.classList.contains("open") ? id : null;
+    const isOpen = editor.classList.toggle("open");
+    editingId = isOpen ? id : null;
+    actionButton.setAttribute("aria-expanded", isOpen ? "true" : "false");
     return;
   }
   if (act === "cancel") {
     editor.classList.remove("open");
     editingId = null;
+    const editBtn = card.querySelector('[data-act="edit"]');
+    if (editBtn) editBtn.setAttribute("aria-expanded", "false");
     return;
   }
 
   if (act === "history") {
     const panel = card.querySelector(".history-panel");
-    if (!panel.hidden) { panel.hidden = true; return; }
+    if (!panel.hidden) {
+      panel.hidden = true;
+      actionButton.setAttribute("aria-expanded", "false");
+      return;
+    }
     const data = await call(`/items/${id}/history`);
     panel.innerHTML = historyHtml(data.events);
     panel.hidden = false;
+    actionButton.setAttribute("aria-expanded", "true");
     return;
   }
 
