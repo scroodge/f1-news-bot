@@ -225,12 +225,16 @@ async function call(path, options = {}) {
 const esc = (s) => (s || "").replace(/[&<>"]/g, c => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;" }[c]));
 
 let feedbackReasons = [];
-function feedbackControls(editing = false) {
+function feedbackControls(editing = false, itemId = "") {
   const prefix = editing ? "edit-feedback" : "feedback";
   const options = feedbackReasons.length ? feedbackReasons : [{code:"unspecified", label:"Прычына не пазначана"}];
+  const reasonId = `${prefix}-reason-${itemId}`;
+  const noteId = `${prefix}-note-${itemId}`;
   return `<details class="feedback-controls" style="padding:8px 14px"><summary>${editing ? "Прычына праўкі" : "Прычына рашэння"} · для навучання</summary>
-    <label>Прычына <select data-${prefix}-reason aria-label="Прычына для навучання">${options.map(r => `<option value="${esc(r.code)}">${esc(r.label)}</option>`).join("")}</select></label>
-    <label>Каментар (неабавязкова) <input data-${prefix}-note maxlength="1000" aria-label="Каментар да рашэння"></label>
+    <label for="${reasonId}">Прычына</label>
+    <select id="${reasonId}" data-${prefix}-reason aria-label="Прычына для навучання">${options.map(r => `<option value="${esc(r.code)}">${esc(r.label)}</option>`).join("")}</select>
+    <label for="${noteId}">Каментар (неабавязкова)</label>
+    <input id="${noteId}" data-${prefix}-note maxlength="1000" aria-label="Каментар да рашэння">
   </details>`;
 }
 function feedbackPayload(card, editing = false) {
@@ -323,7 +327,7 @@ function rawCardHtml(item) {
       <span>🌐 ${esc(item.original_language || "?")}</span>
     </div>
     ${evidenceHtml(item)}
-    ${feedbackControls()}
+    ${feedbackControls(false, item.id)}
     <div class="row">
       <button class="action" data-act="translate">🌐 Перакласці</button>
       <button class="action danger ghost" data-act="reject" aria-label="Адхіліць" style="flex:0 0 44px">✕</button>
@@ -364,14 +368,14 @@ function processedCardHtml(item) {
       <textarea id="edit-kp-${item.id}" name="key_points" rows="3">${esc((item.key_points || []).join("\n"))}</textarea>
       <label for="edit-tags-${item.id}">Тэгі (праз коску)</label>
       <input id="edit-tags-${item.id}" name="tags" value="${esc((item.tags || []).join(", "))}">
-      ${feedbackControls(true)}
+      ${feedbackControls(true, item.id)}
       <div class="row">
         <button class="action" data-act="save">Захаваць</button>
         <button class="action ghost" data-act="generate-keypoints">🔑 Галоўнае</button>
         <button class="action ghost" data-act="cancel" style="flex:0 0 60px">Скасаваць</button>
       </div>
     </div>
-    ${feedbackControls()}
+    ${feedbackControls(false, item.id)}
     <div class="row">
       <button class="action" data-act="approve">✅ Публікаваць</button>
       <button class="action ghost" data-act="edit" aria-label="Рэдагаваць">✏️</button>

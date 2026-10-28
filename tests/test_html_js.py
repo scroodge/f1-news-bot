@@ -60,6 +60,8 @@ def test_html_accessibility_attributes():
     html = INDEX_HTML.read_text(encoding="utf-8")
     assert 'aria-label="Адхіліць"' in html
     assert 'aria-label="Рэдагаваць"' in html
+    assert 'for="${reasonId}"' in html
+    assert 'for="${noteId}"' in html
 
 
 def test_accessibility_attributes_present():
@@ -91,6 +93,10 @@ const assert = require('node:assert/strict');
   const rendered = storyCardHtml(sample);
   assert(rendered.includes('data-id="one"'));
   assert(rendered.includes('data-id="two"'));
+  assert(rendered.includes('for="feedback-reason-one"'));
+  assert(rendered.includes('id="feedback-reason-one"'));
+  assert(rendered.includes('for="feedback-note-one"'));
+  assert(rendered.includes('id="feedback-note-one"'));
   assert(!rendered.includes('<script>unsafe</script>'));
   assert(!rendered.includes('href="javascript:'));
   assert(rendered.includes('&lt;img'));
