@@ -60,6 +60,10 @@ def test_html_accessibility_attributes():
     html = INDEX_HTML.read_text(encoding="utf-8")
     assert 'aria-label="Адхіліць"' in html
     assert 'aria-label="Рэдагаваць"' in html
+    assert 'title="Адхіліць"' in html
+    assert 'title="Рэдагаваць"' in html
+    assert 'aria-controls="edit-${item.id}"' in html
+    assert 'aria-controls="hist-${item.id}"' in html
 
 
 def test_accessibility_attributes_present():
