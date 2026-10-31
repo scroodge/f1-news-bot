@@ -72,6 +72,15 @@ def test_accessibility_attributes_present():
     assert ":focus-visible" in html
 
 
+def test_character_counter_present_and_accessible():
+    html = INDEX_HTML.read_text(encoding="utf-8")
+    assert "char-count" in html
+    assert 'class="char-count"' in html
+    assert 'aria-live="polite"' in html
+    assert "count-title-" in html
+    assert "count-summary-" in html
+
+
 def test_story_cards_escape_evidence_and_incomplete_translation_requires_confirmation():
     """Run the actual rendering and action functions with a small DOM/network stub."""
     import json
