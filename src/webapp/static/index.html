@@ -104,6 +104,8 @@
   .feedback-controls label { display: block; margin-top: 8px; color: var(--fg); font-size: 12px; }
   .feedback-controls select, .feedback-controls input { display: block; width: 100%; margin-top: 4px; padding: 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); color: var(--fg); font: inherit; }
   .feedback-controls select:focus-visible { outline: 2px solid var(--btn); outline-offset: 2px; }
+  .field-head { display: flex; justify-content: space-between; align-items: baseline; }
+  .field-head .char-count { font-size: 11px; color: var(--hint); font-weight: 500; }
   .editor label { font-size: 11px; font-weight: 600; color: var(--hint); text-transform: uppercase; letter-spacing: .4px; }
   .editor input, .editor textarea {
     width: 100%; padding: 12px; border-radius: var(--radius-sm); border: 1px solid color-mix(in srgb, var(--fg) 12%, transparent);
@@ -356,9 +358,15 @@ function processedCardHtml(item) {
       <div><div class="orig-inner"><b>${esc(item.title)}</b>\n\n${esc(item.original_content || "")}</div></div>
     </div>
     <div class="editor" id="edit-${item.id}">
-      <label for="edit-title-${item.id}">Загаловак</label>
+      <div class="field-head">
+        <label for="edit-title-${item.id}">Загаловак</label>
+        <span class="char-count" id="count-title-${item.id}" aria-live="polite">${(item.title_be || "").length} зн.</span>
+      </div>
       <input id="edit-title-${item.id}" name="title_be" value="${esc(item.title_be || "")}">
-      <label for="edit-summary-${item.id}">Тэкст</label>
+      <div class="field-head">
+        <label for="edit-summary-${item.id}">Тэкст</label>
+        <span class="char-count" id="count-summary-${item.id}" aria-live="polite">${(item.summary || "").length} зн.</span>
+      </div>
       <textarea id="edit-summary-${item.id}" name="summary">${esc(item.summary || "")}</textarea>
       <label for="edit-kp-${item.id}">Галоўнае (радок на пункт)</label>
       <textarea id="edit-kp-${item.id}" name="key_points" rows="3">${esc((item.key_points || []).join("\n"))}</textarea>
@@ -747,6 +755,14 @@ document.getElementById("content").addEventListener("click", async (e) => {
 
 document.getElementById("content").addEventListener("input", e => {
   if (e.target.matches("input, textarea, select")) queueDirty = true;
+  if (e.target.name === "title_be" || e.target.name === "summary") {
+    const card = e.target.closest(".card");
+    if (card) {
+      const type = e.target.name === "title_be" ? "title" : "summary";
+      const counter = card.querySelector(`#count-${type}-${card.dataset.id}`);
+      if (counter) counter.textContent = `${e.target.value.length} зн.`;
+    }
+  }
 });
 document.getElementById("content").addEventListener("change", e => {
   if (e.target.matches("input, textarea, select")) queueDirty = true;
