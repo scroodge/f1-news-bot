@@ -60,12 +60,17 @@ def test_html_accessibility_attributes():
     html = INDEX_HTML.read_text(encoding="utf-8")
     assert 'aria-label="Адхіліць"' in html
     assert 'aria-label="Рэдагаваць"' in html
+    assert 'aria-label="Захаваць змены"' in html
+    assert 'aria-label="Згенераваць галоўныя пункты"' in html
+    assert 'aria-label="Скасаваць рэдагаванне"' in html
+    assert 'aria-label="Ухваліць і паставіць у чаргу на публікацыю"' in html
 
 
 def test_accessibility_attributes_present():
     html = INDEX_HTML.read_text(encoding="utf-8")
     assert 'role="tablist"' in html
     assert 'role="tab"' in html
+    assert 'role="progressbar"' in html
     assert "aria-selected=" in html
     assert "aria-expanded=" in html
     assert "aria-controls=" in html

@@ -325,8 +325,8 @@ function rawCardHtml(item) {
     ${evidenceHtml(item)}
     ${feedbackControls()}
     <div class="row">
-      <button class="action" data-act="translate">🌐 Перакласці</button>
-      <button class="action danger ghost" data-act="reject" aria-label="Адхіліць" style="flex:0 0 44px">✕</button>
+      <button class="action" data-act="translate" aria-label="Перакласці на беларускую мову" title="Перакласці">🌐 Перакласці</button>
+      <button class="action danger ghost" data-act="reject" aria-label="Адхіліць" title="Адхіліць" style="flex:0 0 44px">✕</button>
     </div>
   </div>`;
 }
@@ -366,18 +366,18 @@ function processedCardHtml(item) {
       <input id="edit-tags-${item.id}" name="tags" value="${esc((item.tags || []).join(", "))}">
       ${feedbackControls(true)}
       <div class="row">
-        <button class="action" data-act="save">Захаваць</button>
-        <button class="action ghost" data-act="generate-keypoints">🔑 Галоўнае</button>
-        <button class="action ghost" data-act="cancel" style="flex:0 0 60px">Скасаваць</button>
+        <button class="action" data-act="save" aria-label="Захаваць змены" title="Захаваць">Захаваць</button>
+        <button class="action ghost" data-act="generate-keypoints" aria-label="Згенераваць галоўныя пункты" title="Згенераваць галоўныя пункты">🔑 Галоўнае</button>
+        <button class="action ghost" data-act="cancel" aria-label="Скасаваць рэдагаванне" title="Скасаваць" style="flex:0 0 60px">Скасаваць</button>
       </div>
     </div>
     ${feedbackControls()}
     <div class="row">
-      <button class="action" data-act="approve">✅ Публікаваць</button>
-      <button class="action ghost" data-act="edit" aria-label="Рэдагаваць">✏️</button>
-      <button class="action danger ghost" data-act="reject" aria-label="Адхіліць" style="flex:0 0 44px">✕</button>
+      <button class="action" data-act="approve" aria-label="Ухваліць і паставіць у чаргу на публікацыю" title="Публікаваць">✅ Публікаваць</button>
+      <button class="action ghost" data-act="edit" aria-label="Рэдагаваць" title="Рэдагаваць">✏️</button>
+      <button class="action danger ghost" data-act="reject" aria-label="Адхіліць" title="Адхіліць" style="flex:0 0 44px">✕</button>
     </div>
-    <button class="action ghost" data-act="translate" style="font-size:12px">🌐 Пераперакласці</button>
+    <button class="action ghost" data-act="translate" aria-label="Перакласці зноў" title="Перакласці зноў" style="font-size:12px">🌐 Пераперакласці</button>
   </div>`;
 }
 
@@ -580,8 +580,8 @@ async function handleAction(id, act, card, actionButton) {
       <div class="loading-overlay">
         <div class="spinner"></div>
         <div class="step active" id="progress-step">⏳ Пачатак...</div>
-        <div class="progress-bar-container" style="margin-top:12px;width:100%;max-width:300px;height:6px;background:var(--border);border-radius:3px;overflow:hidden">
-          <div id="progress-fill" style="height:100%;width:0%;background:var(--accent);border-radius:3px;transition:width 0.5s ease"></div>
+        <div class="progress-bar-container" style="margin-top:12px;width:100%;max-width:300px;height:6px;background:var(--border);border-radius:3px;overflow:hidden" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-label="Прагрэс апрацоўкі">
+          <div id="progress-fill" style="height:100%;width:0%;background:var(--btn, #2481cc);border-radius:3px;transition:width 0.5s ease"></div>
         </div>
       </div>`;
     try {
