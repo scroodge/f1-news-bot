@@ -70,6 +70,11 @@ def test_accessibility_attributes_present():
     assert "aria-expanded=" in html
     assert "aria-controls=" in html
     assert ":focus-visible" in html
+    assert 'role="progressbar"' in html
+    assert "aria-valuenow=" in html
+    assert 'role="status"' in html
+    assert 'aria-live="polite"' in html
+    assert "--accent: var(--btn);" in html
 
 
 def test_story_cards_escape_evidence_and_incomplete_translation_requires_confirmation():
