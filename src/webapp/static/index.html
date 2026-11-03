@@ -579,9 +579,9 @@ async function handleAction(id, act, card, actionButton) {
     card.innerHTML = `
       <div class="loading-overlay">
         <div class="spinner"></div>
-        <div class="step active" id="progress-step">⏳ Пачатак...</div>
-        <div class="progress-bar-container" style="margin-top:12px;width:100%;max-width:300px;height:6px;background:var(--border);border-radius:3px;overflow:hidden">
-          <div id="progress-fill" style="height:100%;width:0%;background:var(--accent);border-radius:3px;transition:width 0.5s ease"></div>
+        <div class="step active" id="progress-step" role="status" aria-live="polite">⏳ Пачатак...</div>
+        <div class="progress-bar-container" role="progressbar" aria-label="Прагрэс перакладу" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-valuetext="Пачатак" style="margin-top:12px;width:100%;max-width:300px;height:6px;background:var(--border);border-radius:3px;overflow:hidden">
+          <div id="progress-fill" style="height:100%;width:0%;background:var(--btn);border-radius:3px;transition:width 0.5s ease"></div>
         </div>
       </div>`;
     try {
@@ -607,10 +607,15 @@ async function handleAction(id, act, card, actionButton) {
             lastStep = label;
           }
           const fill = document.getElementById("progress-fill");
+          const progressContainer = card.querySelector(".progress-bar-container");
           if (fill) {
             const idx = stepOrder.indexOf(data.step);
-            const pct = data.step === "error" ? 100 : Math.max(5, ((idx + 1) / stepOrder.length) * 100);
+            const pct = data.step === "error" ? 100 : Math.max(5, Math.round(((idx + 1) / stepOrder.length) * 100));
             fill.style.width = pct + "%";
+            if (progressContainer) {
+              progressContainer.setAttribute("aria-valuenow", String(pct));
+              progressContainer.setAttribute("aria-valuetext", label);
+            }
             if (data.step === "error") fill.style.background = "var(--danger)";
           }
           if (data.finished || data.step === "done" || data.step === "error") {
