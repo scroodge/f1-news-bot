@@ -13,6 +13,7 @@
     --link: var(--tg-theme-link-color, #2481cc);
     --btn: var(--tg-theme-button-color, #2481cc);
     --btn-fg: var(--tg-theme-button-text-color, #ffffff);
+    --accent: var(--btn);
     --card: var(--tg-theme-secondary-bg-color, #f2f2f7);
     --border: color-mix(in srgb, var(--fg) 12%, transparent);
     --danger: #c0392b;
@@ -578,9 +579,9 @@ async function handleAction(id, act, card, actionButton) {
     };
     card.innerHTML = `
       <div class="loading-overlay">
-        <div class="spinner"></div>
-        <div class="step active" id="progress-step">⏳ Пачатак...</div>
-        <div class="progress-bar-container" style="margin-top:12px;width:100%;max-width:300px;height:6px;background:var(--border);border-radius:3px;overflow:hidden">
+        <div class="spinner" aria-hidden="true"></div>
+        <div class="step active" id="progress-step" role="status" aria-live="polite">⏳ Пачатак...</div>
+        <div class="progress-bar-container" role="progressbar" id="progress-bar" aria-labelledby="progress-step" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100" style="margin-top:12px;width:100%;max-width:300px;height:6px;background:var(--border);border-radius:3px;overflow:hidden">
           <div id="progress-fill" style="height:100%;width:0%;background:var(--accent);border-radius:3px;transition:width 0.5s ease"></div>
         </div>
       </div>`;
@@ -607,10 +608,12 @@ async function handleAction(id, act, card, actionButton) {
             lastStep = label;
           }
           const fill = document.getElementById("progress-fill");
+          const bar = document.getElementById("progress-bar");
           if (fill) {
             const idx = stepOrder.indexOf(data.step);
-            const pct = data.step === "error" ? 100 : Math.max(5, ((idx + 1) / stepOrder.length) * 100);
+            const pct = data.step === "error" ? 100 : Math.max(5, Math.round(((idx + 1) / stepOrder.length) * 100));
             fill.style.width = pct + "%";
+            if (bar) bar.setAttribute("aria-valuenow", String(pct));
             if (data.step === "error") fill.style.background = "var(--danger)";
           }
           if (data.finished || data.step === "done" || data.step === "error") {
