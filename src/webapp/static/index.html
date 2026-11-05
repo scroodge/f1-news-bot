@@ -15,6 +15,7 @@
     --btn-fg: var(--tg-theme-button-text-color, #ffffff);
     --card: var(--tg-theme-secondary-bg-color, #f2f2f7);
     --border: color-mix(in srgb, var(--fg) 12%, transparent);
+    --accent: var(--tg-theme-button-color, #2481cc);
     --danger: #c0392b;
     --radius: 14px;
     --radius-sm: 10px;
@@ -577,10 +578,10 @@ async function handleAction(id, act, card, actionButton) {
       error: "❌ Памылка",
     };
     card.innerHTML = `
-      <div class="loading-overlay">
-        <div class="spinner"></div>
+      <div class="loading-overlay" role="status" aria-live="polite">
+        <div class="spinner" aria-hidden="true"></div>
         <div class="step active" id="progress-step">⏳ Пачатак...</div>
-        <div class="progress-bar-container" style="margin-top:12px;width:100%;max-width:300px;height:6px;background:var(--border);border-radius:3px;overflow:hidden">
+        <div class="progress-bar-container" role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100" aria-labelledby="progress-step" style="margin-top:12px;width:100%;max-width:300px;height:6px;background:var(--border);border-radius:3px;overflow:hidden">
           <div id="progress-fill" style="height:100%;width:0%;background:var(--accent);border-radius:3px;transition:width 0.5s ease"></div>
         </div>
       </div>`;
@@ -609,8 +610,9 @@ async function handleAction(id, act, card, actionButton) {
           const fill = document.getElementById("progress-fill");
           if (fill) {
             const idx = stepOrder.indexOf(data.step);
-            const pct = data.step === "error" ? 100 : Math.max(5, ((idx + 1) / stepOrder.length) * 100);
+            const pct = data.step === "error" ? 100 : Math.max(5, Math.round(((idx + 1) / stepOrder.length) * 100));
             fill.style.width = pct + "%";
+            fill.parentElement?.setAttribute("aria-valuenow", String(pct));
             if (data.step === "error") fill.style.background = "var(--danger)";
           }
           if (data.finished || data.step === "done" || data.step === "error") {
@@ -631,8 +633,8 @@ async function handleAction(id, act, card, actionButton) {
       }
     } catch (e) {
       card.innerHTML = `
-        <div style="text-align:center;padding:24px 16px;color:var(--hint)">
-          <div style="font-size:28px;margin-bottom:8px">⚠️</div>
+        <div role="alert" style="text-align:center;padding:24px 16px;color:var(--hint)">
+          <div style="font-size:28px;margin-bottom:8px" aria-hidden="true">⚠️</div>
           <div style="font-size:14px;margin-bottom:12px">Памылка: ${esc(e.message)}</div>
           <button class="action ghost" data-act="translate" style="display:inline-block;flex:none;padding:8px 20px">Паўтарыць</button>
         </div>`;
