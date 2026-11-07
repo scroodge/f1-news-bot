@@ -72,6 +72,17 @@ def test_accessibility_attributes_present():
     assert ":focus-visible" in html
 
 
+def test_translation_progress_bar_accessibility():
+    html = INDEX_HTML.read_text(encoding="utf-8")
+    assert 'role="progressbar"' in html
+    assert 'aria-valuenow="0"' in html
+    assert 'aria-valuemin="0"' in html
+    assert 'aria-valuemax="100"' in html
+    assert 'aria-label="Прагрэс перакладу"' in html
+    assert "background:var(--btn)" in html
+    assert 'bar.setAttribute("aria-valuenow"' in html
+
+
 def test_story_cards_escape_evidence_and_incomplete_translation_requires_confirmation():
     """Run the actual rendering and action functions with a small DOM/network stub."""
     import json

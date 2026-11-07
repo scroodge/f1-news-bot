@@ -577,11 +577,11 @@ async function handleAction(id, act, card, actionButton) {
       error: "❌ Памылка",
     };
     card.innerHTML = `
-      <div class="loading-overlay">
-        <div class="spinner"></div>
+      <div class="loading-overlay" aria-live="polite">
+        <div class="spinner" aria-hidden="true"></div>
         <div class="step active" id="progress-step">⏳ Пачатак...</div>
-        <div class="progress-bar-container" style="margin-top:12px;width:100%;max-width:300px;height:6px;background:var(--border);border-radius:3px;overflow:hidden">
-          <div id="progress-fill" style="height:100%;width:0%;background:var(--accent);border-radius:3px;transition:width 0.5s ease"></div>
+        <div class="progress-bar-container" id="progress-bar" role="progressbar" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100" aria-valuetext="⏳ Пачатак..." aria-label="Прагрэс перакладу" style="margin-top:12px;width:100%;max-width:300px;height:6px;background:var(--border);border-radius:3px;overflow:hidden">
+          <div id="progress-fill" style="height:100%;width:0%;background:var(--btn);border-radius:3px;transition:width 0.5s ease"></div>
         </div>
       </div>`;
     try {
@@ -607,10 +607,15 @@ async function handleAction(id, act, card, actionButton) {
             lastStep = label;
           }
           const fill = document.getElementById("progress-fill");
+          const bar = document.getElementById("progress-bar");
           if (fill) {
             const idx = stepOrder.indexOf(data.step);
             const pct = data.step === "error" ? 100 : Math.max(5, ((idx + 1) / stepOrder.length) * 100);
             fill.style.width = pct + "%";
+            if (bar) {
+              bar.setAttribute("aria-valuenow", Math.round(pct));
+              bar.setAttribute("aria-valuetext", label);
+            }
             if (data.step === "error") fill.style.background = "var(--danger)";
           }
           if (data.finished || data.step === "done" || data.step === "error") {
