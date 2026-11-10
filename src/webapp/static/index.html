@@ -15,6 +15,7 @@
     --btn-fg: var(--tg-theme-button-text-color, #ffffff);
     --card: var(--tg-theme-secondary-bg-color, #f2f2f7);
     --border: color-mix(in srgb, var(--fg) 12%, transparent);
+    --accent: var(--btn);
     --danger: #c0392b;
     --radius: 14px;
     --radius-sm: 10px;
@@ -326,7 +327,7 @@ function rawCardHtml(item) {
     ${feedbackControls()}
     <div class="row">
       <button class="action" data-act="translate">🌐 Перакласці</button>
-      <button class="action danger ghost" data-act="reject" aria-label="Адхіліць" style="flex:0 0 44px">✕</button>
+      <button class="action danger ghost" data-act="reject" aria-label="Адхіліць" title="Адхіліць" style="flex:0 0 44px">✕</button>
     </div>
   </div>`;
 }
@@ -374,8 +375,8 @@ function processedCardHtml(item) {
     ${feedbackControls()}
     <div class="row">
       <button class="action" data-act="approve">✅ Публікаваць</button>
-      <button class="action ghost" data-act="edit" aria-label="Рэдагаваць">✏️</button>
-      <button class="action danger ghost" data-act="reject" aria-label="Адхіліць" style="flex:0 0 44px">✕</button>
+      <button class="action ghost" data-act="edit" aria-label="Рэдагаваць" title="Рэдагаваць">✏️</button>
+      <button class="action danger ghost" data-act="reject" aria-label="Адхіліць" title="Адхіліць" style="flex:0 0 44px">✕</button>
     </div>
     <button class="action ghost" data-act="translate" style="font-size:12px">🌐 Пераперакласці</button>
   </div>`;
@@ -579,8 +580,8 @@ async function handleAction(id, act, card, actionButton) {
     card.innerHTML = `
       <div class="loading-overlay">
         <div class="spinner"></div>
-        <div class="step active" id="progress-step">⏳ Пачатак...</div>
-        <div class="progress-bar-container" style="margin-top:12px;width:100%;max-width:300px;height:6px;background:var(--border);border-radius:3px;overflow:hidden">
+        <div class="step active" id="progress-step" role="status" aria-live="polite">⏳ Пачатак...</div>
+        <div class="progress-bar-container" role="progressbar" aria-label="Прагрэс перакладу" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" style="margin-top:12px;width:100%;max-width:300px;height:6px;background:var(--border);border-radius:3px;overflow:hidden">
           <div id="progress-fill" style="height:100%;width:0%;background:var(--accent);border-radius:3px;transition:width 0.5s ease"></div>
         </div>
       </div>`;
@@ -609,8 +610,10 @@ async function handleAction(id, act, card, actionButton) {
           const fill = document.getElementById("progress-fill");
           if (fill) {
             const idx = stepOrder.indexOf(data.step);
-            const pct = data.step === "error" ? 100 : Math.max(5, ((idx + 1) / stepOrder.length) * 100);
+            const pct = Math.round(data.step === "error" ? 100 : Math.max(5, ((idx + 1) / stepOrder.length) * 100));
             fill.style.width = pct + "%";
+            const container = fill.closest('[role="progressbar"]');
+            if (container) container.setAttribute("aria-valuenow", String(pct));
             if (data.step === "error") fill.style.background = "var(--danger)";
           }
           if (data.finished || data.step === "done" || data.step === "error") {
