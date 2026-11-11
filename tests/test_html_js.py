@@ -70,6 +70,10 @@ def test_accessibility_attributes_present():
     assert "aria-expanded=" in html
     assert "aria-controls=" in html
     assert ":focus-visible" in html
+    assert 'data-act="history" aria-expanded="false"' in html
+    assert 'data-act="edit" aria-label="Рэдагаваць" aria-expanded="false"' in html
+    assert 'aria-label="Папярэдняя старонка"' in html
+    assert 'aria-label="Наступная старонка"' in html
 
 
 def test_story_cards_escape_evidence_and_incomplete_translation_requires_confirmation():
